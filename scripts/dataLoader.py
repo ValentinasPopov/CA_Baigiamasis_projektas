@@ -2,12 +2,22 @@ import shutil
 import random
 from pathlib import Path
 from typing import List
+import numpy as np
+import os
+from PIL import Image
+import torch
+from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
+from torchvision import transforms, datasets
+from sklearn.model_selection import train_test_split, StratifiedKFold
+from collections import defaultdict
 
 
-class DataLoader:
+class ImageDataLoader:
 
-    def __init__(self, path: str):
+    def __init__(self, path):
         self.path = Path(path)  # Ensure path is a Path object
+        self.train_path = self.path / "train"
+        self.test_path = self.path / "test"
     #Paskirstoma train ir test folderius paveikslus
     def dataset_size(self, dataset):
         train_size = int(0.8 * len(dataset))
@@ -21,8 +31,6 @@ class DataLoader:
         return folder
     #
     def move_files(self, files, dest_dir):
-        dest_dir.mkdir(parents=True, exist_ok=True)  # Make sure dest_dir exists
-
         for file in files:
             if file.is_file():
                 target_path = dest_dir / file.name
@@ -34,10 +42,7 @@ class DataLoader:
 
             if not source_dir.exists():
                 continue
-
             images = list(source_dir.glob("*"))
-
-            #random.shuffle(images)
 
             train_size, test_size = self.dataset_size(images)
             train_imgs = images[:train_size]
@@ -54,4 +59,40 @@ class DataLoader:
 
             print(f"Moved images for category: {category}")
 
-#
+    def get_train_test_loaders(self, batch_size=16):
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+        ])
+
+        train_dataset = datasets.ImageFolder(self.train_path, transform=transform)
+        test_dataset = datasets.ImageFolder(self.test_path, transform=transform)
+
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
+
+        return train_loader, test_loader
+
+    def get_cv_train_test_loaders(self, batch_size=16, n_folds=2):
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+        ])
+
+        dataset = datasets.ImageFolder(self.train_path, transform=transform)
+        targets = np.array([sample[1] for sample in dataset.samples])
+
+        skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=42)
+        folds = []
+
+        for fold_idx, (train_idx, val_idx) in enumerate(skf.split(np.zeros(len(targets)), targets)):
+            train_sampler = SubsetRandomSampler(train_idx)
+            val_sampler = SubsetRandomSampler(val_idx)
+
+            train_loader = DataLoader(dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True)
+            val_loader = DataLoader(dataset, batch_size=batch_size, sampler=val_sampler, drop_last=False)
+
+            folds.append((train_loader, val_loader))
+            print(f"Fold {fold_idx + 1}: Train={len(train_idx)}, Val={len(val_idx)}")
+
+        return folds
