@@ -1,60 +1,131 @@
 import shutil
 import random
 from pathlib import Path
-from typing import List
-import numpy as np
 import os
+from xml.sax import parse
+
+import numpy as np
 from PIL import Image
 import torch
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
-from torchvision import transforms, datasets
+from torchvision import transforms
 from sklearn.model_selection import train_test_split, StratifiedKFold
-from collections import defaultdict
 
+from scripts.constants import (
+    GOOD_CLASS_FOLDER,
+    DATASET_SETS,
+    INPUT_IMG_SIZE,
+    IMG_FORMAT,
+    NEG_CLASS,
+)
 
-class ImageDataLoader:
+class ImageDataLoader(Dataset):
 
     def __init__(self, path):
-        self.path = Path(path)  # Ensure path is a Path object
-        self.train_path = self.path / "train"
-        self.test_path = self.path / "test"
+        self.classes = ["Good", "Anomaly"] if NEG_CLASS == 1 else ["Anomaly", "Good"]
+        self.img_transform = transforms.Compose(
+            [transforms.Resize(INPUT_IMG_SIZE), transforms.ToTensor()]
+        )
 
-    #
-    def get_train_test_loaders(self, batch_size=16):
-        transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-        ])
+        (
+            self.img_filenames,
+            self.img_labels,
+            self.img_labels_detailed,
+        ) = self._get_images_and_labels(path)
 
-        train_dataset = datasets.ImageFolder(self.train_path, transform=transform)
-        test_dataset = datasets.ImageFolder(self.test_path, transform=transform)
+        print(f"Test: {self.img_filenames}\n")
 
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
 
-        return train_loader, test_loader
+    def _get_images_and_labels(self, path):
+        image_names = []
+        labels = []
+        labels_detailed = []
 
-    #
-    def get_cv_train_test_loaders(self, batch_size=16, n_folds=2):
-        transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-        ])
+        for folder in DATASET_SETS:
+            folder = os.path.join(path, folder)
+            for class_folder in os.listdir(folder):
+                label = (
+                    1 - NEG_CLASS if class_folder == GOOD_CLASS_FOLDER else NEG_CLASS
+                )
+                label_detailed = class_folder
+                print(label_detailed)
 
-        dataset = datasets.ImageFolder(self.train_path, transform=transform)
-        targets = np.array([sample[1] for sample in dataset.samples])
+                class_folder = os.path.join(folder, class_folder)
+                class_images = os.listdir(class_folder)
+                class_images = [
+                    os.path.join(class_folder, image)
+                    for image in class_images
+                    if image.find(IMG_FORMAT) > -1
+                ]
 
-        skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=42)
-        folds = []
+                image_names.extend(class_images)
+                labels.extend([label] * len(class_images))
+                labels_detailed.extend([label_detailed] * len(class_images))
 
-        for fold_idx, (train_idx, val_idx) in enumerate(skf.split(np.zeros(len(targets)), targets)):
-            train_sampler = SubsetRandomSampler(train_idx)
-            val_sampler = SubsetRandomSampler(val_idx)
+        print("Dataset {}: N Images = {}, Share of anomalies = {:.3f}".format(path, len(labels), np.sum(labels) / len(labels)))
+        return image_names, labels, labels_detailed
 
-            train_loader = DataLoader(dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True)
-            val_loader = DataLoader(dataset, batch_size=batch_size, sampler=val_sampler, drop_last=False)
+    def __len__(self):
+        return len(self.img_labels)
 
-            folds.append((train_loader, val_loader))
-            print(f"Fold {fold_idx + 1}: Train={len(train_idx)}, Val={len(val_idx)}")
+    def __getitem__(self, idx):
+        img_fn = self.img_filenames[idx]
+        label = self.img_labels[idx]
+        img = Image.open(img_fn)
+        img = self.img_transform(img)
+        label = torch.as_tensor(label, dtype=torch.long)
+        return img, label
 
-        return folds
+
+def get_train_test_loaders(path, batch_size, test_size=0.2, random_state=42):
+    """
+    Returns train and test dataloaders.
+    Splits dataset in stratified manner, considering various defect types.
+    """
+    dataset = ImageDataLoader(path=path)
+
+    train_idx, test_idx = train_test_split(
+        np.arange(dataset.__len__()),
+        test_size=test_size,
+        shuffle=True,
+        stratify=dataset.img_labels_detailed,
+        random_state=random_state,
+    )
+    train_sampler = SubsetRandomSampler(train_idx)
+    test_sampler = SubsetRandomSampler(test_idx)
+
+    train_loader = DataLoader(
+        dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True
+    )
+    test_loader = DataLoader(
+        dataset, batch_size=batch_size, sampler=test_sampler, drop_last=False
+    )
+    return train_loader, test_loader
+
+
+def get_cv_train_test_loaders(path, batch_size, n_folds=5):
+    """
+    Returns train and test dataloaders for N-Fold cross-validation.
+    Splits dataset in stratified manner, considering various defect types.
+    """
+    dataset = ImageDataLoader(path=path)
+
+    kf = StratifiedKFold(n_splits=n_folds)
+    kf_loader = []
+
+    for train_idx, test_idx in kf.split(
+            np.arange(dataset.__len__()), dataset.img_labels_detailed
+    ):
+        train_sampler = SubsetRandomSampler(train_idx)
+        test_sampler = SubsetRandomSampler(test_idx)
+
+        train_loader = DataLoader(
+            dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True
+        )
+        test_loader = DataLoader(
+            dataset, batch_size=batch_size, sampler=test_sampler, drop_last=False
+        )
+
+        kf_loader.append((train_loader, test_loader))
+
+    return kf_loader

@@ -1,5 +1,5 @@
 GOOD_CLASS_FOLDER = "good"
 DATASET_SETS = ["train", "test"]
 IMG_FORMAT = ".jpg"
-INPUT_IMG_SIZE = (224, 224)
+INPUT_IMG_SIZE = (512, 512)
 NEG_CLASS = 1

@@ -28,6 +28,7 @@ class DatasetSplitter:
                 file.rename(target_path)
     #
     def split_to_train_test_images(self):
+
         for category in ['good', 'anomaly']:
             source_dir = self.path / category
 
