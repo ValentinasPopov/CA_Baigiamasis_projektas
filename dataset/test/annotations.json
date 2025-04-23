@@ -1,0 +1,117 @@
+{
+  "100500027.jpg": {
+    "filename": "100500027.jpg",
+    "detections": []
+  },
+  "100500031.jpg": {
+    "filename": "100500031.jpg",
+    "detections": []
+  },
+  "100500025.jpg": {
+    "filename": "100500025.jpg",
+    "detections": []
+  },
+  "100500030.jpg": {
+    "filename": "100500030.jpg",
+    "detections": []
+  },
+  "100500036.jpg": {
+    "filename": "100500036.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          371,
+          164,
+          816,
+          433
+        ]
+      },
+      {
+        "label": 1,
+        "bbox": [
+          1729,
+          214,
+          2141,
+          424
+        ]
+      }
+    ]
+  },
+  "100500024.jpg": {
+    "filename": "100500024.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          1048,
+          1015,
+          1048,
+          1015
+        ]
+      },
+      {
+        "label": 1,
+        "bbox": [
+          1718,
+          692,
+          2064,
+          854
+        ]
+      }
+    ]
+  },
+  "100500052.jpg": {
+    "filename": "100500052.jpg",
+    "detections": []
+  },
+  "100500053.jpg": {
+    "filename": "100500053.jpg",
+    "detections": []
+  },
+  "100700002.jpg": {
+    "filename": "100700002.jpg",
+    "detections": []
+  },
+  "100500084.jpg": {
+    "filename": "100500084.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          1111,
+          818,
+          1241,
+          913
+        ]
+      },
+      {
+        "label": 1,
+        "bbox": [
+          1252,
+          851,
+          1393,
+          948
+        ]
+      }
+    ]
+  },
+  "100700006.jpg": {
+    "filename": "100700006.jpg",
+    "detections": []
+  },
+  "100700007.jpg": {
+    "filename": "100700007.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          1607,
+          27,
+          2535,
+          406
+        ]
+      }
+    ]
+  }
+}

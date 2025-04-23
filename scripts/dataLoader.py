@@ -1,131 +1,85 @@
-import shutil
-import random
-from pathlib import Path
+import glob
 import os
-from xml.sax import parse
+import random
 
-import numpy as np
-from PIL import Image
 import torch
-from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
-from torchvision import transforms
-from sklearn.model_selection import train_test_split, StratifiedKFold
-
-from scripts.constants import (
-    GOOD_CLASS_FOLDER,
-    DATASET_SETS,
-    INPUT_IMG_SIZE,
-    IMG_FORMAT,
-    NEG_CLASS,
-)
-
-class ImageDataLoader(Dataset):
-
-    def __init__(self, path):
-        self.classes = ["Good", "Anomaly"] if NEG_CLASS == 1 else ["Anomaly", "Good"]
-        self.img_transform = transforms.Compose(
-            [transforms.Resize(INPUT_IMG_SIZE), transforms.ToTensor()]
-        )
-
-        (
-            self.img_filenames,
-            self.img_labels,
-            self.img_labels_detailed,
-        ) = self._get_images_and_labels(path)
-
-        print(f"Test: {self.img_filenames}\n")
+import torchvision
+from PIL import Image
+from tqdm import tqdm
+from torch.utils.data.dataset import Dataset
+import xml.etree.ElementTree as ET
+import json
 
 
-    def _get_images_and_labels(self, path):
-        image_names = []
-        labels = []
-        labels_detailed = []
+def load_images_and_anns(im_dir, annotation_json_file, label2idx):
+    im_infos = []
 
-        for folder in DATASET_SETS:
-            folder = os.path.join(path, folder)
-            for class_folder in os.listdir(folder):
-                label = (
-                    1 - NEG_CLASS if class_folder == GOOD_CLASS_FOLDER else NEG_CLASS
-                )
-                label_detailed = class_folder
-                print(label_detailed)
+    print(f"Loading annotation file: {annotation_json_file}")
+    with open(annotation_json_file, 'r', encoding='utf-8') as f:
+        data = json.load(f)
 
-                class_folder = os.path.join(folder, class_folder)
-                class_images = os.listdir(class_folder)
-                class_images = [
-                    os.path.join(class_folder, image)
-                    for image in class_images
-                    if image.find(IMG_FORMAT) > -1
-                ]
+    for img_name, content in data.items():
+        im_info = {
+            'img_id': img_name.split('.')[0],
+            'filename': os.path.join(im_dir, img_name),
+            'width': content.get('width', 0),
+            'height': content.get('height', 0),
+            'detections': []
+        }
 
-                image_names.extend(class_images)
-                labels.extend([label] * len(class_images))
-                labels_detailed.extend([label_detailed] * len(class_images))
+        detections = content.get('detections', [])
+        for detection in detections:
+            x1, y1, x2, y2 = detection['bbox']
+            if x2 > x1 and y2 > y1:
+                label = detection['label']
+                if isinstance(label, str):
+                    label = label2idx.get(label, 0)
+                im_info['detections'].append({
+                    'label': label,
+                    'bbox': [x1, y1, x2, y2]
+                })
 
-        print("Dataset {}: N Images = {}, Share of anomalies = {:.3f}".format(path, len(labels), np.sum(labels) / len(labels)))
-        return image_names, labels, labels_detailed
+        # Even if no detections, still include this image
+        im_infos.append(im_info)
+
+    print(f"Total images{len(im_infos)}")
+    return im_infos
+class VOCDataset(Dataset):
+    def __init__(self, split, im_dir, annotation_json_path):
+
+        self.split = split
+        self.im_dir = im_dir
+        self.annotation_json_path = annotation_json_path
+        classes = [
+            'knok', 'scratchs'
+        ]
+        classes = sorted(classes)
+        classes = ['background'] + classes
+        self.label2idx = {classes[idx]: idx for idx in range(len(classes))}
+        self.idx2label = {idx: classes[idx] for idx in range(len(classes))}
+        print(self.idx2label)
+        self.images_info = load_images_and_anns(im_dir, annotation_json_path, self.label2idx)
 
     def __len__(self):
-        return len(self.img_labels)
+        return len(self.images_info)
 
-    def __getitem__(self, idx):
-        img_fn = self.img_filenames[idx]
-        label = self.img_labels[idx]
-        img = Image.open(img_fn)
-        img = self.img_transform(img)
-        label = torch.as_tensor(label, dtype=torch.long)
-        return img, label
-
-
-def get_train_test_loaders(path, batch_size, test_size=0.2, random_state=42):
-    """
-    Returns train and test dataloaders.
-    Splits dataset in stratified manner, considering various defect types.
-    """
-    dataset = ImageDataLoader(path=path)
-
-    train_idx, test_idx = train_test_split(
-        np.arange(dataset.__len__()),
-        test_size=test_size,
-        shuffle=True,
-        stratify=dataset.img_labels_detailed,
-        random_state=random_state,
-    )
-    train_sampler = SubsetRandomSampler(train_idx)
-    test_sampler = SubsetRandomSampler(test_idx)
-
-    train_loader = DataLoader(
-        dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True
-    )
-    test_loader = DataLoader(
-        dataset, batch_size=batch_size, sampler=test_sampler, drop_last=False
-    )
-    return train_loader, test_loader
-
-
-def get_cv_train_test_loaders(path, batch_size, n_folds=5):
-    """
-    Returns train and test dataloaders for N-Fold cross-validation.
-    Splits dataset in stratified manner, considering various defect types.
-    """
-    dataset = ImageDataLoader(path=path)
-
-    kf = StratifiedKFold(n_splits=n_folds)
-    kf_loader = []
-
-    for train_idx, test_idx in kf.split(
-            np.arange(dataset.__len__()), dataset.img_labels_detailed
-    ):
-        train_sampler = SubsetRandomSampler(train_idx)
-        test_sampler = SubsetRandomSampler(test_idx)
-
-        train_loader = DataLoader(
-            dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True
-        )
-        test_loader = DataLoader(
-            dataset, batch_size=batch_size, sampler=test_sampler, drop_last=False
-        )
-
-        kf_loader.append((train_loader, test_loader))
-
-    return kf_loader
+    def __getitem__(self, index):
+        im_info = self.images_info[index]
+        im = Image.open(im_info['filename'])
+        to_flip = False
+        if self.split == 'train' and random.random() < 0.5:
+            to_flip = True
+            im = im.transpose(Image.FLIP_LEFT_RIGHT)
+        im_tensor = torchvision.transforms.ToTensor()(im)
+        targets = {}
+        targets['bboxes'] = torch.as_tensor([detection['bbox'] for detection in im_info['detections']])
+        targets['labels'] = torch.as_tensor([detection['label'] for detection in im_info['detections']])
+        if to_flip:
+            for idx, box in enumerate(targets['bboxes']):
+                x1, y1, x2, y2 = box
+                w = x2 - x1
+                im_w = im_tensor.shape[-1]
+                x1 = im_w - x1 - w
+                x2 = x1 + w
+                targets['bboxes'][idx] = torch.as_tensor([x1, y1, x2, y2])
+        return im_tensor, targets, im_info['filename']

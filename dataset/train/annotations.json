@@ -1,0 +1,253 @@
+{
+  "100500015.jpg": {
+    "filename": "100500015.jpg",
+    "detections": []
+  },
+  "100500014.jpg": {
+    "filename": "100500014.jpg",
+    "detections": []
+  },
+  "100500028.jpg": {
+    "filename": "100500028.jpg",
+    "detections": []
+  },
+  "100500038.jpg": {
+    "filename": "100500038.jpg",
+    "detections": []
+  },
+  "100500040.jpg": {
+    "filename": "100500040.jpg",
+    "detections": []
+  },
+  "100500041.jpg": {
+    "filename": "100500041.jpg",
+    "detections": []
+  },
+  "100500045.jpg": {
+    "filename": "100500045.jpg",
+    "detections": []
+  },
+  "100500044.jpg": {
+    "filename": "100500044.jpg",
+    "detections": []
+  },
+  "100500046.jpg": {
+    "filename": "100500046.jpg",
+    "detections": []
+  },
+  "100500034.jpg": {
+    "filename": "100500034.jpg",
+    "detections": []
+  },
+  "100500035.jpg": {
+    "filename": "100500035.jpg",
+    "detections": []
+  },
+  "100500023.jpg": {
+    "filename": "100500023.jpg",
+    "detections": []
+  },
+  "100500037.jpg": {
+    "filename": "100500037.jpg",
+    "detections": []
+  },
+  "100500026.jpg": {
+    "filename": "100500026.jpg",
+    "detections": []
+  },
+  "100500032.jpg": {
+    "filename": "100500032.jpg",
+    "detections": []
+  },
+  "100500033.jpg": {
+    "filename": "100500033.jpg",
+    "detections": []
+  },
+  "100500029.jpg": {
+    "filename": "100500029.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          1185,
+          62,
+          1624,
+          361
+        ]
+      }
+    ]
+  },
+  "100500016.jpg": {
+    "filename": "100500016.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          1001,
+          0,
+          1350,
+          163
+        ]
+      }
+    ]
+  },
+  "100500039.jpg": {
+    "filename": "100500039.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          174,
+          488,
+          434,
+          700
+        ]
+      },
+      {
+        "label": 1,
+        "bbox": [
+          1260,
+          343,
+          1666,
+          583
+        ]
+      }
+    ]
+  },
+  "100500048.jpg": {
+    "filename": "100500048.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          1623,
+          299,
+          2029,
+          554
+        ]
+      }
+    ]
+  },
+  "100500043.jpg": {
+    "filename": "100500043.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          1071,
+          653,
+          1432,
+          857
+        ]
+      }
+    ]
+  },
+  "100500042.jpg": {
+    "filename": "100500042.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          876,
+          466,
+          1092,
+          634
+        ]
+      }
+    ]
+  },
+  "100500047.jpg": {
+    "filename": "100500047.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          228,
+          694,
+          553,
+          860
+        ]
+      }
+    ]
+  },
+  "100500079.jpg": {
+    "filename": "100500079.jpg",
+    "detections": []
+  },
+  "100500078.jpg": {
+    "filename": "100500078.jpg",
+    "detections": []
+  },
+  "100700004.jpg": {
+    "filename": "100700004.jpg",
+    "detections": []
+  },
+  "100700005.jpg": {
+    "filename": "100700005.jpg",
+    "detections": []
+  },
+  "100500083.jpg": {
+    "filename": "100500083.jpg",
+    "detections": []
+  },
+  "100500081.jpg": {
+    "filename": "100500081.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          1962,
+          32,
+          2140,
+          126
+        ]
+      }
+    ]
+  },
+  "100700003.jpg": {
+    "filename": "100700003.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          1010,
+          687,
+          1349,
+          878
+        ]
+      }
+    ]
+  },
+  "100700001.jpg": {
+    "filename": "100700001.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          840,
+          522,
+          1366,
+          794
+        ]
+      }
+    ]
+  },
+  "100700000.jpg": {
+    "filename": "100700000.jpg",
+    "detections": [
+      {
+        "label": 1,
+        "bbox": [
+          1347,
+          503,
+          1717,
+          752
+        ]
+      }
+    ]
+  },
+  "100700008.jpg": {
+    "filename": "100700008.jpg",
+    "detections": []
+  }
+}

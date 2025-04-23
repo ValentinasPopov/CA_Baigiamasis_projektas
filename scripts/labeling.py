@@ -20,6 +20,7 @@ class Label:
         self.selecting = False
 
         self.defect_labels = ["knok", "scratchs"]
+        self.label2idx = {label: i for i, label in enumerate(self.defect_labels)}
         self.defect_label_keys = {ord(str(i)): label for i, label in enumerate(self.defect_labels, start=1)}
 
 
@@ -70,20 +71,18 @@ class Label:
         with open(annotations_path, "w", encoding="utf-8") as f:
             json.dump(self.annotations, f, indent=2, ensure_ascii=False)
 
-    def annotate_images(self,input_img_paths, output_path, labels):
-
+    def annotate_images(self, input_img_paths, output_path, labels):
         labels_key_dict = {ord(str(i)): label for i, label in enumerate(labels, start=1)}
-        # create all classification folders
+
+        # Create output folders
         for label in labels:
             (output_path / label).mkdir(parents=True, exist_ok=True)
 
         for idx, img_path in enumerate(input_img_paths):
             self.img = cv2.imread(str(img_path))
-
             self.current_rects = []
             self.selected_anomaly = False
 
-            # Draw label guide
             display_img = self.img.copy()
             cv2.putText(display_img, f"{img_path.name} | left: {len(input_img_paths) - idx}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
@@ -95,45 +94,46 @@ class Label:
             cv2.setMouseCallback("Image", self.draw_rectangle)
             cv2.imshow("Image", display_img)
 
-
             while True:
                 key = cv2.waitKey(0)
 
-                # Quit Annotation Tool
                 if key == ord("q"):
                     cv2.destroyAllWindows()
-                    self.save_labels_to_json(output_path)
-                    loader = image_dataset_splitter.DatasetSplitter(self.path)
-                    loader.split_to_train_test_images()
+                    splitter = image_dataset_splitter.DatasetSplitter(self.path)
+                    splitter.split_to_train_test_images(self.annotations)
                     return
 
                 if not self.selected_anomaly and key in labels_key_dict:
                     label = labels_key_dict[key]
                     self.annotations[img_path.name] = {
-                        "file_name": img_path.name,
-                        "objects": []  # no defects
+                        "filename": img_path.name,
+                        "detections": []
                     }
-                    print(f"Classified as {label}")
                     output_img_path = output_path / label / img_path.name
                     img_path.rename(output_img_path)
                     break
 
                 if self.selected_anomaly:
-                    # Save as anomaly image
                     label = "anomaly"
-
                     self.annotations[img_path.name] = {
-                        "file_name": img_path.name,
-                        "objects": self.current_rects
+                        "filename": img_path.name,
+                        "detections": [
+                            {
+                                "label": self.label2idx[obj["label"]]+1,
+                                "bbox": obj["bbox"]
+                            } for obj in self.current_rects
+                        ]
                     }
                     output_img_path = output_path / label / img_path.name
                     img_path.rename(output_img_path)
-                    print(f"Classified as {output_img_path}")
                     break
 
             cv2.destroyAllWindows()
 
-        self.save_labels_to_json(output_path)
+        # Final split + annotation save after all labeling is done
+        splitter = image_dataset_splitter.DatasetSplitter(self.path)
+        splitter.split_to_train_test_images(self.annotations)
+
         return True
 
     def run(self):
