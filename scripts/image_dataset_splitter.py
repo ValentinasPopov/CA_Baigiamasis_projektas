@@ -76,8 +76,8 @@ class DatasetSplitter:
             print(f"\nSplitting '{category}': {len(images)} total")
             print(f"Train: {len(train_imgs)}, Test: {len(test_imgs)}")
 
-            train_dir = self.ensure_folder("", self.path / "train")
-            test_dir = self.ensure_folder("", self.path / "test")
+            train_dir = self.ensure_folder("", self.path / "train/images")
+            test_dir = self.ensure_folder("", self.path / "test/images")
 
             train_names += self.move_annotations(train_imgs, self.train_path, category, annotations)
             test_names += self.move_annotations(test_imgs, self.test_path, category, annotations)

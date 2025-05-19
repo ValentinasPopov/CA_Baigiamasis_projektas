@@ -44,14 +44,21 @@ def load_images_and_anns(im_dir, annotation_json_file, label2idx):
 
     print(f"Total images{len(im_infos)}")
     return im_infos
-class VOCDataset(Dataset):
+class RCNNDataset(Dataset):
     def __init__(self, split, im_dir, annotation_json_path):
 
         self.split = split
         self.im_dir = im_dir
         self.annotation_json_path = annotation_json_path
         classes = [
-            'knok', 'scratchs'
+            'Quartzity',
+            'Live_Knot',
+            'Marrow',
+            'Resin',
+            'Dead_Knot',
+            'knot_with_crack',
+            'Knot_missing',
+            'CracK'
         ]
         classes = sorted(classes)
         classes = ['background'] + classes

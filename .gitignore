@@ -153,13 +153,3 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
-
-# Ignore all PNG, JPG, and JPEG images
-*.png
-*.jpg
-*.jpeg
-
-# Optional: exclude all images recursively inside folders
-**/*.png
-**/*.jpg
-**/*.jpeg

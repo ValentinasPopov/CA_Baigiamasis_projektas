@@ -19,7 +19,7 @@ class Label:
         self.selected_anomaly = False
         self.selecting = False
 
-        self.defect_labels = ["knok", "scratchs"]
+        self.defect_labels = ["Live_Knot", "Marrow", "Resin", "Dead_Knot", "Knot_with_Crack", "Knot_missing", "Crack"]
         self.label2idx = {label: i for i, label in enumerate(self.defect_labels)}
         self.defect_label_keys = {ord(str(i)): label for i, label in enumerate(self.defect_labels, start=1)}
 
@@ -138,7 +138,17 @@ class Label:
 
     def run(self):
         input_path = Path(os.path.join(self.path, "raw"))
-        input_img_paths = sorted(input_path.glob("*"))
+        if not input_path.exists() or not input_path.is_dir():
+            print(f"Directory not found: {input_path}")
+            return
+
+        input_img_paths = sorted([
+            p for p in input_path.glob("*") if p.suffix.lower() in [".jpg", ".jpeg", ".png"]
+        ])
+
+        if not input_img_paths:
+            print("No photos found in RAW folder.")
+            return
 
         output_path = Path(self.path)
         output_path.mkdir(parents=True, exist_ok=True)

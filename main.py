@@ -32,7 +32,7 @@ def main():
             splitter.split_to_train_test_images()
         elif user_value == "3":
 
-            print(os.path.exists("dataset/train/annotations.json"))
+            print(os.path.exists("dataset/train/images/annotations.json"))
         else:
             break
 

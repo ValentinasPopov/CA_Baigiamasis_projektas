@@ -1,0 +1,19 @@
+
+path: ../Galutinis_projektas_VP/dataset
+
+train: train/images  # Relative to 'path' - e.g., /Users/valentinaspopov/Desktop/PythonProjects/Galutinis_projektas_VP/dataset/train/images
+val: test/images     # Relative to 'path' - e.g., /Users/valentinaspopov/Desktop/PythonProjects/Galutinis_projektas_VP/dataset/test/images
+
+# Number of classes
+nc: 8
+
+# Class names
+names:
+  - Quartzity
+  - Live_Knot
+  - Marrow
+  - Resin
+  - Dead_Knot
+  - knot_with_crack
+  - Knot_missing
+  - CracK

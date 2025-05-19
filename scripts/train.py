@@ -6,7 +6,7 @@ import yaml
 import random
 from tqdm import tqdm
 import torchvision
-from dataLoader import VOCDataset
+from dataLoader import RCNNDataset
 from torch.utils.data.dataloader import DataLoader
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.anchor_utils import AnchorGenerator
@@ -38,7 +38,7 @@ def train(args):
     if device == 'cuda':
         torch.cuda.manual_seed_all(seed)
 
-    voc = VOCDataset('train',
+    voc = RCNNDatasetDataset('train',
                      im_dir=dataset_config['im_train_path'],
                      annotation_json_path=dataset_config['ann_train_path'])
 
@@ -154,7 +154,7 @@ def train(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Arguments for faster rcnn using torchvision code training')
     parser.add_argument('--config', dest='config_path',
-                        default='config/voc.yaml', type=str)
+                        default='../config/rcnn.yaml', type=str)
     parser.add_argument('--use_resnet50_fpn', dest='use_resnet50_fpn',
                         default=True, type=bool)
     args = parser.parse_args()

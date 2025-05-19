@@ -14,7 +14,7 @@ from tqdm import tqdm
 from PIL import Image
 
 
-from dataLoader import VOCDataset  # your dataset class
+from dataLoader import RCNNDataset  # your dataset class
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
