@@ -1,19 +1,21 @@
-from os import mkdir
-from os.path import exists
-
-import torch
+# Standard library imports
 import argparse
 import os
-import numpy as np
-import yaml
+from os.path import exists
 import random
-from tqdm import tqdm
+from pathlib import Path
+
+import numpy as np
+import torch
 import torchvision
-from scripts.dataLoader_rcnn import RCNNDataset
+import yaml
+from torchvision.models import ResNet50_Weights
+from tqdm import tqdm
 from torch.utils.data.dataloader import DataLoader
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.anchor_utils import AnchorGenerator
-from pathlib import Path
+
+from scripts.dataLoader_rcnn import RCNNDataset
 
 
 SCRIPT_DIR   = Path(__file__).resolve().parent
@@ -55,6 +57,7 @@ def train(args):
                      im_dir=dataset_config['im_train_path'],
                      annotation_json_path=dataset_config['ann_train_path'])
 
+    # Nurodoma YAML faile, kiek nuotraukų treniruoti
     total_images = len(rcnn_data)
     num_images = train_config['num_train_images']
     if num_images < total_images:
@@ -65,27 +68,38 @@ def train(args):
     else:
         rcnn_data = torch.utils.data.Subset(rcnn_data, list(range(num_images)))
 
-
+    # Sukuriama DataLoader'į su batch'ais ir shuflle parametrais
     train_dataset = DataLoader(rcnn_data,
                                batch_size=train_config['batch_size'],
                                shuffle=train_config['shuffle'],
                                num_workers=train_config['num_workers'],
                                collate_fn=collate_function)
 
+    # Paruošiama RCNN modelį
     if args.use_resnet50_fpn:
+        # Naudojama iš anksto apmokytą ResNet50_FPN backbone
         faster_rcnn_model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True,
                                                                                  min_size=model_config['min_im_size'],
                                                                                  max_size=model_config['max_im_size'],
         )
+        # Pakeičiama paskutinį bounding box prediction sluoksnį klasių kiekiui
         faster_rcnn_model.roi_heads.box_predictor = FastRCNNPredictor(
             faster_rcnn_model.roi_heads.box_predictor.cls_score.in_features,
             num_classes=dataset_config['num_classes'])
     else:
         backbone = torchvision.models.resnet34(pretrained=True, norm_layer=torchvision.ops.FrozenBatchNorm2d)
+
+        # Pašalinama paskutinius sluoksnius, palkiekama iki conv n-3
         backbone = torch.nn.Sequential(*list(backbone.children())[:-3])
         backbone.out_channels = model_config['backbone_out_channels']
-        roi_align = torchvision.ops.MultiScaleRoIAlign(featmap_names=['0'], output_size=7, sampling_ratio=2)
+
+        # Paruošiama RoI ir anchor
+        roi_align = torchvision.ops.MultiScaleRoIAlign(featmap_names=model_config['featmap_names'],
+                                                       output_size=model_config['output_size'],
+                                                       sampling_ratio=model_config['sampling_ratio'])
         rpn_anchor_generator = AnchorGenerator()
+
+        # Sukuriama RCNN su custom backbone ir parametrais
         faster_rcnn_model = torchvision.models.detection.FasterRCNN(backbone,
                                                                     num_classes=dataset_config['num_classes'],
                                                                     min_size=model_config['min_im_size'],
@@ -111,10 +125,14 @@ def train(args):
                                 weight_decay=5E-5,
                                 momentum=0.9)
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+    # Paruošiama optimizer’į ir scheduler’į
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
+                                                step_size=5,
+                                                gamma=0.1)
     num_epochs = train_config['num_epochs']
     step_count = 0
 
+    # Paruošiama išvesties katalogą svoriams ir log.
     base_out = PROJECT_ROOT / dataset_config['output'] / train_config['task_name']
     base_out.mkdir(parents=True, exist_ok=True)
 
@@ -124,11 +142,13 @@ def train(args):
         frcnn_classification_losses = []
         frcnn_localization_losses = []
         for ims, targets, _ in tqdm(train_dataset):
-
+            # Perkelia target dėžutes į tensor’ius
             for target in targets:
                 target['boxes'] = target['bboxes'].float().to(device)
                 del target['bboxes']
                 target['labels'] = target['labels'].long().to(device)
+
+            # Modelio praradimų skaičiavimas batch’ui
             images = [im.float().to(device) for im in ims]
             batch_losses = faster_rcnn_model(images, targets)
             loss = batch_losses['loss_classifier']
@@ -161,11 +181,11 @@ def train(args):
         loss_output += ' | FRCNN Classification Loss : {:.4f}'.format(np.mean(frcnn_classification_losses))
         loss_output += ' | FRCNN Localization Loss : {:.4f}'.format(np.mean(frcnn_localization_losses))
         print(loss_output)
-    print('Done Training...')
+    print('Treniravimas baigtas..')
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Arguments for faster rcnn using torchvision code training')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--config', dest='config_path',
                         default='config/rcnn.yaml', type=str)
     parser.add_argument('--use_resnet50_fpn', dest='use_resnet50_fpn',

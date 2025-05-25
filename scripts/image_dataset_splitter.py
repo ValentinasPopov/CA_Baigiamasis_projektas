@@ -1,8 +1,7 @@
-from os import mkdir
-from pathlib import Path
-import json
 import os
-import PIL
+import json
+from pathlib import Path
+
 from PIL import Image
 
 class DatasetSplitter:
@@ -50,9 +49,10 @@ class DatasetSplitter:
             existing_annotations = {}
 
         # Filter new annotations
-        filtered_annotations = {
-            name: annotations[name] for name in image_names if name in annotations
-        }
+        filtered_annotations = {}
+        for name in image_names:
+            if name in annotations:
+                filtered_annotations[name] = annotations[name]
 
         existing_annotations.update(filtered_annotations)
 
@@ -66,21 +66,21 @@ class DatasetSplitter:
         image_names
     ):
 
-        # 1) Locate the JSON
+        # Lokacija JSON
         annotations_path = output_path / "annotations.json"
         if not annotations_path.exists():
             print(f"[Warning] {annotations_path} not found, skipping TXT export.")
             return
 
-        # 2) Load it
+        # Nuskaitoma JSON anotacijos
         with annotations_path.open("r", encoding="utf-8") as f:
             all_annotations = json.load(f)
 
-        # 3) Prepare labels/ folder
+        # Paruošiama direktorija  labels/ folder
         labels_dir = output_path / "labels"
         labels_dir.mkdir(parents=True, exist_ok=True)
 
-        # 4) Iterate images
+        # Iteruoti vaizdus
         for img_name in image_names:
             entry = all_annotations.get(img_name)
             if not entry:
@@ -91,12 +91,12 @@ class DatasetSplitter:
             if not dets:
                 continue
 
-            # 5) Get image size
+            # Paveikslo dydis
             img_file = output_path / "images" / entry["filename"]
             with Image.open(img_file) as img:
                 img_w, img_h = img.size
 
-            # 6) Build YOLO lines
+            # YOLO lines
             lines = []
             for det in dets:
                 lbl  = det["label"]
@@ -107,12 +107,12 @@ class DatasetSplitter:
                 bh = (y1 - y0) / img_h
                 lines.append(f"{lbl} {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
 
-            # 7) Write .txt named by stem
-            stem = Path(entry["filename"]).stem
+            # Įrašoma YOLO formato anotacijos .txt formatu pagal stem
+            stem = Path(entry["filename"]).stem #.stem - simply the filename portion without its final suffix (file extension).
             txt_path = labels_dir / f"{stem}.txt"
             txt_path.write_text("\n".join(lines), encoding="utf-8")
 
-        print("Convert from JSON to YOLO TXT labels completed.")
+        print("Konvertavimas iš JSON į YOLO .txt labels baigtos")
 
 
     def split_to_train_test_images(
@@ -131,29 +131,29 @@ class DatasetSplitter:
             n_train, _ = self.dataset_size(imgs)
             train_imgs, test_imgs = imgs[:n_train], imgs[n_train:]
 
-            print(f"\nCategory '{category}': {len(imgs)} images → "
+            print(f"\nKategorijos '{category}': {len(imgs)} paveikslai → "
                   f"{len(train_imgs)} train, {len(test_imgs)} test")
 
-            # ensure image dirs
+            # Vaizdų kategorijos
             train_img_dir = self.train_path / "images"
             test_img_dir  = self.test_path  / "images"
             train_img_dir.mkdir(parents=True, exist_ok=True)
             test_img_dir.mkdir(parents=True, exist_ok=True)
 
-            # record and move
+            # Įrašoma ir perkeliama nuotraukos
             train_names += self.move_annotations(train_imgs, self.train_path, category, annotations)
             test_names  += self.move_annotations(test_imgs,  self.test_path,  category, annotations)
             self.move_files(train_imgs, train_img_dir)
             self.move_files(test_imgs,  test_img_dir)
 
-        # 8) Save JSON & TXT in each split
+        # Išsaugoma JSON ir TXT formatu kiekvieną split'ą
         for out_path, names in (
             (self.train_path, train_names),
             (self.test_path,  test_names)
         ):
-            # write the filtered annotations.json
+            # Įrašoma į annotations.json
             self.save_labels_to_json(annotations, out_path, names)
-            # then write the YOLO .txt files
+            # Įašoma YOLO .txt
             self.save_labels_to_txt(      annotations, out_path, names)
 
-        print("Dataset split complete: JSON and TXT labels written.")
+        print("Dataset split'inimas pabaigtas. Įrašyta JSON  ir TXT labels.")

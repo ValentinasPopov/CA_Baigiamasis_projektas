@@ -1,9 +1,8 @@
-from pathlib import Path
-import cv2
 import os
 import json
+from pathlib import Path
 
-from sympy import false
+import cv2
 
 from helper.load_detection_labels import DetectLabels
 from scripts import  image_dataset_splitter
@@ -11,7 +10,7 @@ from scripts import  image_dataset_splitter
 
 
 class Label:
-    def __init__(self, path: str):
+    def __init__(self, path):
         self.path = path
         self.drawing = False
         self.ix, self.iy = -1, -1
@@ -23,8 +22,10 @@ class Label:
 
         self.defect_labels = DetectLabels("config/detect_labels.yaml")
         self.label2idx = {label: i for i, label in enumerate(self.defect_labels)}
-        self.defect_label_keys = {ord(str(i)): label for i, label in enumerate(self.defect_labels, start=1)}
-
+        self.defect_label_keys = {}
+        for i, label in enumerate(self.defect_labels, start=1):
+            key = ord(str(i))
+            self.defect_label_keys[key] = label
 
     def draw_rectangle(self, event, x, y, flags, param):
 
@@ -74,9 +75,11 @@ class Label:
             json.dump(self.annotations, f, indent=2, ensure_ascii=False)
 
     def annotate_images(self, input_img_paths, output_path, labels):
-        labels_key_dict = {ord(str(i)): label for i, label in enumerate(labels, start=1)}
+        labels_key_dict = {}
+        for i, label in enumerate(labels, start=1):
+            key = ord(str(i))
+            labels_key_dict[key] = label
 
-        # Create output folders
         for label in labels:
             (output_path / label).mkdir(parents=True, exist_ok=True)
 
@@ -132,7 +135,6 @@ class Label:
 
             cv2.destroyAllWindows()
 
-        # Final split + annotation save after all labeling is done
         splitter = image_dataset_splitter.DatasetSplitter(self.path)
         splitter.split_to_train_test_images(self.annotations)
 
@@ -141,21 +143,21 @@ class Label:
     def run(self):
         input_path = Path(os.path.join(self.path, "raw"))
         if not input_path.exists() or not input_path.is_dir():
-            print(f"Directory not found: {input_path}")
+            print(f"Katalogas nerastas: {input_path}")
             return
 
-        input_img_paths = sorted([
-            p for p in input_path.glob("*") if p.suffix.lower() in [".jpg", ".jpeg", ".png"]
-        ])
+        img_list = []
+        for p in input_path.glob("*"):
+            if p.suffix.lower() in [".jpg", ".jpeg", ".png"]:
+                img_list.append(p)
+        input_img_paths = sorted(img_list)
 
         if not input_img_paths:
-            print("No photos found in RAW folder.")
+            print("RAW aplanke nuotraukų nerasta.")
             return
 
         output_path = Path(self.path)
         output_path.mkdir(parents=True, exist_ok=True)
-
-
 
         return self.annotate_images(
             input_img_paths=input_img_paths,

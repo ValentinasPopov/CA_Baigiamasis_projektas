@@ -23,19 +23,27 @@ with open(CONFIG_PATH, 'r') as file:
 model_config = config['model_params']
 
 def get_iou(boxes1, boxes2):
-    r"""
-    IOU between two sets of boxes.
-    :param boxes1: (Tensor of shape N x 4)
-    :param boxes2: (Tensor of shape M x 4)
-    :return: IOU matrix of shape N x M
     """
+    Apskaičiuoja IoU:
+      - boxes1: N x 4
+      - boxes2: M x 4
+    Grąžina N x M matricą, kur elementas [i,j] yra IoU tarp boxes1[i] ir boxes2[j].
+    """
+
+    # Apskaičiuojama kiekvieno rėmelio plotus
     area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
     area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
+
+    # Randame IoU koordinates
     x_left = torch.max(boxes1[:, None, 0], boxes2[:, 0])
     y_top = torch.max(boxes1[:, None, 1], boxes2[:, 1])
     x_right = torch.min(boxes1[:, None, 2], boxes2[:, 2])
     y_bottom = torch.min(boxes1[:, None, 3], boxes2[:, 3])
+
+    # Apskaičiuojame intersection plotą, užtikrindami neigiamas reikšmės kaip 0
     intersection_area = (x_right - x_left).clamp(min=0) * (y_bottom - y_top).clamp(min=0)
+
+    # Apskaičiuojame jungtinį plotą ir galutinį IoU
     union = area1[:, None] + area2 - intersection_area
     iou = intersection_area / union
     return iou
@@ -45,6 +53,8 @@ def boxes_to_transformation_targets(ground_truth_boxes, anchors_or_proposals):
     Given ground-truth boxes and proposals (or anchors), compute the
     transformation targets (tx, ty, tw, th).
     """
+
+    # Išskaičiuojame pločius, aukščius ir centru koordinates
     widths = anchors_or_proposals[:, 2] - anchors_or_proposals[:, 0]
     heights = anchors_or_proposals[:, 3] - anchors_or_proposals[:, 1]
     center_x = anchors_or_proposals[:, 0] + 0.5 * widths
@@ -63,9 +73,6 @@ def boxes_to_transformation_targets(ground_truth_boxes, anchors_or_proposals):
     return regression_targets
 
 def apply_regression_pred_to_anchors_or_proposals(box_transform_pred, anchors_or_proposals):
-    r"""
-    Transform anchors or proposals according to the predicted bbox deltas.
-    """
     box_transform_pred = box_transform_pred.reshape(box_transform_pred.size(0), -1, 4)
     w = anchors_or_proposals[:, 2] - anchors_or_proposals[:, 0]
     h = anchors_or_proposals[:, 3] - anchors_or_proposals[:, 1]
@@ -94,35 +101,67 @@ def apply_regression_pred_to_anchors_or_proposals(box_transform_pred, anchors_or
     return pred_boxes
 
 def sample_positive_negative(labels, positive_count, total_count):
+
+    # Randam visus teigiamų labels >= 1 ir neigiamų labels == 0)indeksus
     positive = torch.where(labels >= 1)[0]
     negative = torch.where(labels == 0)[0]
+
+    # Nustatome, kiek iš jų naudosime
     num_pos = min(positive.numel(), positive_count)
     num_neg = min(negative.numel(), total_count - num_pos)
+
     perm_positive_idxs = torch.randperm(positive.numel(), device=positive.device)[:num_pos]
     perm_negative_idxs = torch.randperm(negative.numel(), device=negative.device)[:num_neg]
+
+    # Gaunam galutinius pasiriktų indeksų masyvus
     pos_idxs = positive[perm_positive_idxs]
     neg_idxs = negative[perm_negative_idxs]
+
+
     sampled_pos_idx_mask = torch.zeros_like(labels, dtype=torch.bool)
     sampled_neg_idx_mask = torch.zeros_like(labels, dtype=torch.bool)
+
     sampled_pos_idx_mask[pos_idxs] = True
     sampled_neg_idx_mask[neg_idxs] = True
+
     return sampled_neg_idx_mask, sampled_pos_idx_mask
 
 def clamp_boxes_to_image_boundary(boxes, image_shape):
+    """
+    Užtikrina, kad visos dėžutės koordinates būtų paveikslo ribose.
+    """
+
     boxes_x1 = boxes[..., 0]
     boxes_y1 = boxes[..., 1]
     boxes_x2 = boxes[..., 2]
     boxes_y2 = boxes[..., 3]
+
+    # Nustato paveikslo aukštį ir plotį
     height, width = image_shape[-2:]
+
+    # Riboja x koordinates intervale [0, width]
     boxes_x1 = boxes_x1.clamp(min=0, max=width)
     boxes_x2 = boxes_x2.clamp(min=0, max=width)
+
+    # Riboja y koordinates intervale [0, height]
     boxes_y1 = boxes_y1.clamp(min=0, max=height)
     boxes_y2 = boxes_y2.clamp(min=0, max=height)
-    boxes = torch.cat((boxes_x1[..., None], boxes_y1[..., None],
-                       boxes_x2[..., None], boxes_y2[..., None]), dim=-1)
+
+    # Sujungiame atgal į Tensor su keturiomis stulpelėmis
+    boxes = torch.cat((
+                    boxes_x1[..., None],
+                    boxes_y1[..., None],
+                    boxes_x2[..., None],
+                    boxes_y2[..., None]),
+                    dim=-1)
     return boxes
 
 def transform_boxes_to_original_size(boxes, new_size, original_size):
+    """
+    Konvertuoja dėžučių koordinates iš naujo (resized) paveikslėlio atgal į pradinį dydį.
+    """
+
+    # Apskaičiuoja aukščio ir pločio santykius: orig / new
     ratios = [
         torch.tensor(s_orig, dtype=torch.float32, device=boxes.device) /
         torch.tensor(s, dtype=torch.float32, device=boxes.device)
@@ -134,11 +173,14 @@ def transform_boxes_to_original_size(boxes, new_size, original_size):
     xmax = xmax * ratio_width
     ymin = ymin * ratio_height
     ymax = ymax * ratio_height
+
+    # Sujungia atgal į Tensor N x 4 formatu
     return torch.stack((xmin, ymin, xmax, ymax), dim=1)
 
 class RegionProposalNetwork(nn.Module):
-    r"""
-    Region Proposal Network (RPN) that generates anchors and predicts objectness and bbox offsets.
+    """
+        Generuoja anchor’us ant feature map sluoksnio
+        Prognozuoja objectness score ir bbox offset’us kiekvienam anchor’iui
     """
     def __init__(self, in_channels, scales, aspect_ratios):
         super(RegionProposalNetwork, self).__init__()
@@ -162,39 +204,75 @@ class RegionProposalNetwork(nn.Module):
             torch.nn.init.constant_(layer.bias, 0)
 
     def generate_anchors(self, image, feat):
+
+        """
+         Generuoja visus anchor’us visiems pozicijų taškams: Base anchors pagal scales+aspect_ratios
+         """
+
+        # Feature map matmenys
         grid_h, grid_w = feat.shape[-2:]
+
+        # Pradinio vaizdo matmenys
         image_h, image_w = image.shape[-2:]
+
+        # Stride tarp pikselių feature ir originalaus vaizdo
         stride_h = torch.tensor(image_h // grid_h, dtype=torch.int64, device=feat.device)
         stride_w = torch.tensor(image_w // grid_w, dtype=torch.int64, device=feat.device)
+
+        # Konvertuoja scales ir aspect_ratios į Tensor’us
         scales = torch.as_tensor(self.scales, dtype=feat.dtype, device=feat.device)
         aspect_ratios = torch.as_tensor(self.aspect_ratios, dtype=feat.dtype, device=feat.device)
+
+        # Apskaičiuoja w ir h
         h_ratios = torch.sqrt(aspect_ratios)
         w_ratios = 1 / h_ratios
         ws = (w_ratios[:, None] * scales[None, :]).view(-1)
         hs = (h_ratios[:, None] * scales[None, :]).view(-1)
+
+        # Base anchors viename centre, su puse pločio/aukščio
         base_anchors = torch.stack([-ws, -hs, ws, hs], dim=1) / 2
         base_anchors = base_anchors.round()
+
+        # Generuojame shift‘us tinklelyje
         shifts_x = torch.arange(0, grid_w, dtype=torch.int32, device=feat.device) * stride_w
         shifts_y = torch.arange(0, grid_h, dtype=torch.int32, device=feat.device) * stride_h
         shifts_y, shifts_x = torch.meshgrid(shifts_y, shifts_x, indexing="ij")
         shifts_x = shifts_x.reshape(-1)
         shifts_y = shifts_y.reshape(-1)
         shifts = torch.stack((shifts_x, shifts_y, shifts_x, shifts_y), dim=1)
+
+        # Pridedame base anchors prie kiekvieno shift‘o
         anchors = (shifts.view(-1, 1, 4) + base_anchors.view(1, -1, 4)).reshape(-1, 4)
         return anchors
 
     def assign_targets_to_anchors(self, anchors, gt_boxes):
+        """
+            Priskiria ground-truth dėžutes anchor’iui pagal IoU:
+            - ≥ high_threshold → teigiamas
+            - < low_threshold  → fonas
+            - Užtikrina, kad kiekvienai GT yra bent vienas anchor
+        """
+
+        # IoU matrica tarp gt ir anchor’ų
         iou_matrix = get_iou(gt_boxes, anchors)
+
+        # Kiekvienam anchor randame geriausią GT indeksą
         best_match_iou, best_match_gt_idx = iou_matrix.max(dim=0)
         best_match_gt_idx_pre_thresholding = best_match_gt_idx.clone()
+
+        # Žymi mažo/tarp ribų atvejus
         below_low_threshold = best_match_iou < self.low_iou_threshold
         between_thresholds = (best_match_iou >= self.low_iou_threshold) & (best_match_iou < self.high_iou_threshold)
         best_match_gt_idx[below_low_threshold] = -1
         best_match_gt_idx[between_thresholds] = -2
+
+        # Užtikriname, kad kiekvienas GT turi bent vieną anchor
         best_anchor_iou_for_gt, _ = iou_matrix.max(dim=1)
         gt_pred_pair_with_highest_iou = torch.where(iou_matrix == best_anchor_iou_for_gt[:, None])
         pred_inds_to_update = gt_pred_pair_with_highest_iou[1]
         best_match_gt_idx[pred_inds_to_update] = best_match_gt_idx_pre_thresholding[pred_inds_to_update]
+
+        # Sukuriame matched GT boxes ir labels
         matched_gt_boxes = gt_boxes[best_match_gt_idx.clamp(min=0)]
         labels = (best_match_gt_idx >= 0).to(dtype=torch.float32)
         background_anchors = best_match_gt_idx == -1
@@ -204,13 +282,26 @@ class RegionProposalNetwork(nn.Module):
         return labels, matched_gt_boxes
 
     def filter_proposals(self, proposals, cls_scores, image_shape):
+        """
+           Atrinkti geriausius proposals pagal:
+           - objectness score
+           - minimalaus dydžio filtravimą
+           - NMS
+           - top-K
+        """
+
+        # Pertvarkoe scores ir taikome sigmoid
         cls_scores = cls_scores.reshape(-1)
         cls_scores = torch.sigmoid(cls_scores)
+
+        # Išrenkame top prieš-NMS
         _, top_n_idx = cls_scores.topk(min(self.rpn_prenms_topk, len(cls_scores)))
         cls_scores = cls_scores[top_n_idx]
         proposals = proposals[top_n_idx]
         proposals = clamp_boxes_to_image_boundary(proposals, image_shape)
         min_size = 16
+
+        # Patikriname minimalų plotį/aukštį
         ws = proposals[:, 2] - proposals[:, 0]
         hs = proposals[:, 3] - proposals[:, 1]
         keep = (ws >= min_size) & (hs >= min_size)
@@ -227,10 +318,18 @@ class RegionProposalNetwork(nn.Module):
         return proposals, cls_scores
 
     def forward(self, image, feat, target=None):
+
+        # RPN feature su ReLU
         rpn_feat = nn.ReLU()(self.rpn_conv(feat))
+
+        # Prognozuojam objectness ir bbox deltas
         cls_scores = self.cls_layer(rpn_feat)
         box_transform_pred = self.bbox_reg_layer(rpn_feat)
+
+        # Generuojam anchor’us tinklelyje
         anchors = self.generate_anchors(image, feat)
+
+        # Pertvarkom formatus ir taikome deltas
         number_of_anchors_per_location = cls_scores.size(1)
         cls_scores = cls_scores.permute(0, 2, 3, 1).reshape(-1, 1)
         box_transform_pred = box_transform_pred.view(
@@ -240,6 +339,8 @@ class RegionProposalNetwork(nn.Module):
             rpn_feat.shape[-2],
             rpn_feat.shape[-1]
         ).permute(0, 3, 4, 1, 2).reshape(-1, 4)
+
+        # Atrenkam geriausius proposals
         proposals = apply_regression_pred_to_anchors_or_proposals(box_transform_pred.detach().reshape(-1, 1, 4), anchors)
         proposals = proposals.reshape(proposals.size(0), 4)
         proposals, scores = self.filter_proposals(proposals, cls_scores.detach(), image.shape)
@@ -277,8 +378,11 @@ class RegionProposalNetwork(nn.Module):
             return rpn_output
 
 class ROIHead(nn.Module):
-    r"""
-    ROI head that performs ROI pooling and predicts the final class scores and bbox offsets.
+    """
+     ROI head that performs:
+      1) atlieka ROI pooling ant pasiūlytų regionų
+      2) Apdoroja per du pilnai sujungtus sluoksnius (fc6, fc7)
+      3) Prognozuoja galutines klasės tikimybes ir dėžučių offset’us
     """
     def __init__(self, in_channels):
         super(ROIHead, self).__init__()
@@ -293,48 +397,54 @@ class ROIHead(nn.Module):
         self.pool_size = model_config['roi_pool_size']
         self.fc_inner_dim = model_config['fc_inner_dim']
 
+        # --- Pilnai sujungti sluoksniai po ROI pooling ---
+        # fc6: įėjimas = flattened pooled features, išėjimas = inner dim
         self.fc6 = nn.Linear(in_channels * self.pool_size * self.pool_size, self.fc_inner_dim)
+        # fc7: antras MLP sluoksnis
         self.fc7 = nn.Linear(self.fc_inner_dim, self.fc_inner_dim)
+        # Klasifikacijos sluoksnis: prognozuoja klases
         self.cls_layer = nn.Linear(self.fc_inner_dim, self.num_classes)
+        # BBox regresijos sluoksnis: prognozuoja off­set’us
         self.bbox_reg_layer = nn.Linear(self.fc_inner_dim, self.num_classes * 4)
 
+        # --- Inicijuojame weights ir bias’us ---
         torch.nn.init.normal_(self.cls_layer.weight, std=0.01)
         torch.nn.init.constant_(self.cls_layer.bias, 0)
         torch.nn.init.normal_(self.bbox_reg_layer.weight, std=0.001)
         torch.nn.init.constant_(self.bbox_reg_layer.bias, 0)
 
     def assign_target_to_proposals(self, proposals, gt_boxes, gt_labels):
-        # Ensure that gt_boxes is of shape [N, 4] and gt_labels is 1D, e.g., [N]
+
+        # Pritaikome gt_boxes ir gt_labels formą
         if gt_boxes.ndim > 2:
             gt_boxes = gt_boxes.squeeze(0)
         if gt_labels.ndim > 1:
             gt_labels = gt_labels.squeeze(0)
 
-        # If there are no ground-truth boxes, assign all proposals as background.
+        # Jei nėra GT dėžučių – pažymime visus pasiūlymus kaip foną
         if gt_boxes.numel() == 0:
             labels = torch.zeros(proposals.shape[0], dtype=torch.int64, device=proposals.device)
             dummy_boxes = torch.zeros((proposals.shape[0], 4), dtype=gt_boxes.dtype, device=gt_boxes.device)
             return labels, dummy_boxes
 
-        # Compute the IOU matrix between gt_boxes and proposals.
+        # Apskaičiuojame IoU matricą tarp GT ir proposals.
         iou_matrix = get_iou(gt_boxes, proposals)
         best_match_iou, best_match_gt_idx = iou_matrix.max(dim=0)
 
-        # Determine proposals with low and very low IOU.
+        # Nustatyti proposals su maža ir labai maža IOU.
         background_proposals = (best_match_iou < self.iou_threshold) & (best_match_iou >= self.low_bg_iou)
         ignored_proposals = best_match_iou < self.low_bg_iou
 
-        # Mark those proposals.
         best_match_gt_idx[background_proposals] = -1
         best_match_gt_idx[ignored_proposals] = -2
 
-        # Get the matched ground truth boxes using clamped indices (any negative becomes 0).
+        # Gautas GT dėžutes priskiriame pagal clamp(min=0)
         matched_gt_boxes_for_proposals = gt_boxes[best_match_gt_idx.clamp(min=0)]
 
-        # Fetch the corresponding labels. (Now gt_labels is 1D.)
+        # Parinka atitinkamas labels.
         labels = gt_labels[best_match_gt_idx.clamp(min=0)].to(dtype=torch.int64)
 
-        # Set labels: background proposals get 0, and ignored get -1.
+        # Nustato labels: fono proposals gauna 0 ir ignoruojama -1
         labels[background_proposals] = 0
         labels[ignored_proposals] = -1
 
@@ -362,12 +472,19 @@ class ROIHead(nn.Module):
             scale = 2 ** float(torch.tensor(approx_scale).log2().round())
             possible_scales.append(scale)
         assert possible_scales[0] == possible_scales[1]
+
+        # ROI pooling
         proposal_roi_pool_feats = torchvision.ops.roi_pool(feat, [proposals],
                                                            output_size=self.pool_size,
                                                            spatial_scale=possible_scales[0])
+        #ROI feature prieš fc sluoksnius
         proposal_roi_pool_feats = proposal_roi_pool_feats.flatten(start_dim=1)
+
+        # FC sluoksniai su ReLU aktyvacija
         box_fc_6 = torch.nn.functional.relu(self.fc6(proposal_roi_pool_feats))
         box_fc_7 = torch.nn.functional.relu(self.fc7(box_fc_6))
+
+        # Galutiniai sluoksniai
         cls_scores = self.cls_layer(box_fc_7)
         box_transform_pred = self.bbox_reg_layer(box_fc_7)
         num_boxes, num_classes = cls_scores.shape

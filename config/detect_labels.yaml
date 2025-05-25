@@ -1,0 +1,11 @@
+
+nc: 8
+defect_classes:
+  - Quartzity
+  - Live_Knot
+  - Marrow
+  - Resin
+  - Dead_Knot
+  - Knot_with_crack
+  - Knot_missing
+  - Crack

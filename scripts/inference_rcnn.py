@@ -1,133 +1,146 @@
-
-import torch
-import numpy as np
-import cv2
-import torchvision
 import argparse
-import random
 import os
+import random
+from pathlib import Path
 import yaml
+
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torchvision
+from sklearn.metrics import ConfusionMatrixDisplay
+from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
+
+from torchvision.models.detection.anchor_utils import AnchorGenerator
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+
 from models.RCNN import FasterRCNN
 from scripts.dataLoader_rcnn import RCNNDataset
-from torch.utils.data.dataloader import DataLoader
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-from torchvision.models.detection.anchor_utils import AnchorGenerator
-import os
-import numpy as np
-import torch
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-from sklearn.metrics import ConfusionMatrixDisplay
-from pathlib import Path
+
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 def get_iou(det, gt):
     det_x1, det_y1, det_x2, det_y2 = det
     gt_x1, gt_y1, gt_x2, gt_y2 = gt
 
+    # Apskaičiuojama IoU
+    # kairysis taškas – didesnė x reikšmė, viršutinis – didesnė y
     x_left = max(det_x1, gt_x1)
     y_top = max(det_y1, gt_y1)
     x_right = min(det_x2, gt_x2)
     y_bottom = min(det_y2, gt_y2)
 
+    # Jei susikirtimo nėra, IoU = 0
     if x_right < x_left or y_bottom < y_top:
         return 0.0
 
+    # Susikirtimo srities plotas
     area_intersection = (x_right - x_left) * (y_bottom - y_top)
+
+    # Atitinkamai aptikimo ir ground-truth plotai
     det_area = (det_x2 - det_x1) * (det_y2 - det_y1)
     gt_area = (gt_x2 - gt_x1) * (gt_y2 - gt_y1)
+
     area_union = float(det_area + gt_area - area_intersection + 1E-6)
+
+    # IoU – susikirtimo dalis iš jungtinio ploto
     iou = area_intersection / area_union
     return iou
 
 
 def compute_map(det_boxes, gt_boxes, iou_threshold=0.4, method='area'):
 
-
+    # Surenkame visas klases, kurios pasitaiko ground-truth duomenyse
     gt_labels = {cls_key for im_gt in gt_boxes for cls_key in im_gt.keys()}
     gt_labels = sorted(gt_labels)
-    all_aps = {}
-    # average precisions for ALL classes
-    aps = []
-    for idx, label in enumerate(gt_labels):
-        # Get detection predictions of this class
-        cls_dets = [
-            [im_idx, im_dets_label] for im_idx, im_dets in enumerate(det_boxes)
-            if label in im_dets for im_dets_label in im_dets[label]
-        ]
-        # Sort them by confidence score
-        cls_dets = sorted(cls_dets, key=lambda k: -k[1][-1])
 
-        # For tracking which gt boxes of this class have already been matched
-        gt_matched = [[False for _ in im_gts[label]] for im_gts in gt_boxes]
-        # Number of gt boxes for this class for recall calculation
-        num_gts = sum([len(im_gts[label]) for im_gts in gt_boxes])
+    all_aps = {}
+    aps = []
+
+    # Einame per kiekvieną klasę atskirai
+    for label in gt_labels:
+        # Surenkame visus detections šiai klasei:
+        # kiekvienas įrašas: [vaizdo indeksas, vienas aptikimas su score pabaigoje]
+        cls_dets = [
+            [im_idx, det]
+            for im_idx, im_dets in enumerate(det_boxes)
+            if label in im_dets
+            for det in im_dets[label]
+        ]
+        # Rūšiuojame pagal score mažėjimo tvarka
+        cls_dets = sorted(cls_dets, key=lambda x: -x[1][-1])
+        gt_matched = [
+            [False] * len(im_gt.get(label, []))
+            for im_gt in gt_boxes
+        ]
+        # Suskaičiuojame visų GT dėžučių skaičių
+        num_gts = sum(len(im_gt.get(label, [])) for im_gt in gt_boxes)
+
+        # Paruošiama sąrašus TP ir FP
         tp = [0] * len(cls_dets)
         fp = [0] * len(cls_dets)
 
-        # For each prediction
+        # Einame per kiekvieną spėjimą ir žiūrime, ar jis TP ar FP
         for det_idx, (im_idx, det_pred) in enumerate(cls_dets):
-            # Get gt boxes for this image and this label
-            im_gts = gt_boxes[im_idx][label]
-            max_iou_found = -1
+            im_gts = gt_boxes[im_idx].get(label, [])
+            max_iou = -1
             max_iou_gt_idx = -1
 
-            # Get best matching gt box
-            for gt_box_idx, gt_box in enumerate(im_gts):
-                gt_box_iou = get_iou(det_pred[:-1], gt_box)
-                if gt_box_iou > max_iou_found:
-                    max_iou_found = gt_box_iou
-                    max_iou_gt_idx = gt_box_idx
-            # TP only if iou >= threshold and this gt has not yet been matched
-            if max_iou_found < iou_threshold or gt_matched[im_idx][max_iou_gt_idx]:
+            # Ieškome geriausiai sutampančios GT dėžutės pagal IoU
+            for gt_idx, gt_box in enumerate(im_gts):
+                iou = get_iou(det_pred[:-1], gt_box)
+                if iou > max_iou:
+                    max_iou = iou
+                    max_iou_gt_idx = gt_idx
+
+            # Jeigu IoU per mažas arba GT jau atitiktas → FP, kitu atveju → TP
+            if max_iou < iou_threshold or gt_matched[im_idx][max_iou_gt_idx]:
                 fp[det_idx] = 1
             else:
                 tp[det_idx] = 1
-                # If tp then we set this gt box as matched
                 gt_matched[im_idx][max_iou_gt_idx] = True
-        # Cumulative tp and fp
-        tp = np.cumsum(tp)
-        fp = np.cumsum(fp)
+
+        tp_cum = np.cumsum(tp)
+        fp_cum = np.cumsum(fp)
 
         eps = np.finfo(np.float32).eps
-        recalls = tp / np.maximum(num_gts, eps)
-        precisions = tp / np.maximum((tp + fp), eps)
+        recalls = tp_cum / max(num_gts, eps)
+        precisions = tp_cum / np.maximum(tp_cum + fp_cum, eps)
 
+        # 5. Apskaičiuojame AP
         if method == 'area':
             recalls = np.concatenate(([0.0], recalls, [1.0]))
             precisions = np.concatenate(([0.0], precisions, [0.0]))
-
-            # Replace precision values with recall r with maximum precision value
-            # of any recall value >= r
-            # This computes the precision envelope
             for i in range(precisions.size - 1, 0, -1):
-                precisions[i - 1] = np.maximum(precisions[i - 1], precisions[i])
-            # For computing area, get points where recall changes value
-            i = np.where(recalls[1:] != recalls[:-1])[0]
-            # Add the rectangular areas to get ap
-            ap = np.sum((recalls[i + 1] - recalls[i]) * precisions[i + 1])
+                precisions[i-1] = max(precisions[i-1], precisions[i])
+            changes = np.where(recalls[1:] != recalls[:-1])[0]
+            ap = np.sum((recalls[changes+1] - recalls[changes]) * precisions[changes+1])
+
         elif method == 'interp':
             ap = 0.0
-            for interp_pt in np.arange(0, 1 + 1E-3, 0.1):
-                # Get precision values for recall values >= interp_pt
-                prec_interp_pt = precisions[recalls >= interp_pt]
+            for r in np.arange(0, 1 + 1e-3, 0.1):
+                # randame max precision, kur recall >= r
+                p = precisions[recalls >= r]
+                ap += p.max() if p.size > 0 else 0.0
+            ap /= 11.0
 
-                # Get max of those precision values
-                prec_interp_pt = prec_interp_pt.max() if prec_interp_pt.size > 0.0 else 0.0
-                ap += prec_interp_pt
-            ap = ap / 11.0
         else:
-            raise ValueError('Method can only be area or interp')
+            raise ValueError("method gali būti tik 'area' arba 'interp'")
+
+        # Jeigu yra bent vienas GT → saugoma AP, kitu atveju NaN
         if num_gts > 0:
             aps.append(ap)
             all_aps[label] = ap
         else:
             all_aps[label] = np.nan
-    # compute mAP at provided iou threshold
-    mean_ap = sum(aps) / len(aps)
+
+    # mAP – vidurkis per visas klases
+    mean_ap = sum(aps) / len(aps) if aps else 0.0
     return mean_ap, all_aps
 
 
@@ -139,7 +152,6 @@ def load_model_and_dataset(args):
         except yaml.YAMLError as exc:
             print(exc)
     print(config)
-    ########################
 
     dataset_config = config['dataset_params']
     model_config = config['model_params']
@@ -207,33 +219,31 @@ def load_model_and_dataset(args):
 
 
 def infer(args):
-    # 1) Prepare output directory
+
+    # Pasirenkame katalogo pavadinimą pagal modelio tipą
     suffix = "resnet_" if args.use_resnet50_fpn else ""
     output_dir = f"tv_frcnn_{suffix}"
     os.makedirs(output_dir, exist_ok=True)
 
-    # 2) Load model & data
+    # Užkrauname modelį ir duomenų rinkinį
     model, dataset, _ = load_model_and_dataset(args)
     model.to(device).eval()
 
-    # 3) Inference loop
     for _ in tqdm(range(10), desc="Inference"):
-        # ---- pick a random sample ----
+        # Pasirenkame atsitiktinį nuotrauką
         idx = random.randrange(len(dataset))
         img_tensor, target, fname = dataset[idx]
-
-        # ---- run the model ----
         with torch.no_grad():
             output = model([img_tensor.to(device)])[0]
 
-        # ---- prepare visualizations ----
+        # Paruošiama nuotraukų vizualizacija
         orig = cv2.imread(fname)
         if orig is None:
-            raise RuntimeError(f"Failed to load image {fname}")
+            raise RuntimeError(f"Nepavyko įkelti paveikslo {fname}")
         pred_vis = orig.copy()
         gt_vis   = orig.copy()
 
-        # ---- draw predictions ----
+        # Nubrėžiama predictions (raudonos dėžutės)
         boxes  = output['boxes'].cpu().numpy()
         labels = output['labels'].cpu().numpy()
         scores = output['scores'].cpu().numpy()
@@ -246,12 +256,10 @@ def infer(args):
             cv2.putText(pred_vis, text, (x1, y1-5),
                         cv2.FONT_HERSHEY_PLAIN, 1, (255,255,255), 1)
 
-        # ---- draw ground-truth ----
+        # Nubrėžiame ground-truth (žalios dėžutės)
         for box, lbl in zip(target['bboxes'], target['labels']):
             x1,y1,x2,y2 = box.int().cpu().numpy()
-            # solid green box
             cv2.rectangle(gt_vis, (x1,y1), (x2,y2), (0,255,0), 2)
-            # label background + text
             label_text = dataset.idx2label[int(lbl)]
             tw, th = cv2.getTextSize(label_text,
                                      cv2.FONT_HERSHEY_PLAIN, 1, 1)[0]
@@ -263,7 +271,7 @@ def infer(args):
                         (x1+2, y1-2),
                         cv2.FONT_HERSHEY_PLAIN, 1, (0,0,0), 1)
 
-        # ---- save outputs ----
+        # Išsaugome rezultatus
         src = Path(fname)
         stem, ext = src.stem, src.suffix
         out_pred = Path(output_dir) / f"{stem}_pred{ext}"
@@ -271,22 +279,23 @@ def infer(args):
         cv2.imwrite(str(out_pred), pred_vis)
         cv2.imwrite(str(out_gt),   gt_vis)
 
-    print(f"Inference complete. Saved to {output_dir}")
+    print(f"Inference baigta. Išsaugota į {output_dir}")
 
 
 
 
 def evaluate_map(args):
 
-    # 0) prepare output directory for saving confusion matrix
+    """
+    Įvertina modelio rezultatus: skaičiuoja confusion_matrix, IoU ir mAP.
+    """
     output_dir = 'tv_frcnn_resnet_' if args.use_resnet50_fpn else 'tv_frcnn_'
     os.makedirs(output_dir, exist_ok=True)
 
-    # 1) load model + data
+    # Užkrauna modelį ir test duomenų rinkinį
     faster_rcnn_model, rcnn_data, test_dataset = load_model_and_dataset(args)
     faster_rcnn_model.eval().to(device)
 
-    # 2) prepare accumulators
     num_classes = len(rcnn_data.idx2label)
     conf_mat = np.zeros((num_classes, num_classes), dtype=int)
     sum_iou  = np.zeros(num_classes, dtype=float)
@@ -294,21 +303,21 @@ def evaluate_map(args):
     all_gts   = []
     all_preds = []
 
-    # 3) loop over up to 10 test images
+    # Eina per pirmus 10 test paveikslėlių
     for idx, (im_batch, target_batch, _) in enumerate(tqdm(test_dataset, desc="Eval")):
         if idx >= 10:
             break
 
-        # unpack the single‐item batch
+        # Išpakuojama vieno elemento batch’ą
         img_tensor = im_batch[0].to(device)               # [C,H,W]
         gt_boxes   = target_batch['bboxes'][0].cpu().numpy()
         gt_labels  = target_batch['labels'][0].cpu().numpy()
 
-        # run inference
+        # Vykdoma inference
         with torch.no_grad():
             out = faster_rcnn_model([img_tensor])[0]
 
-        # --- prepare data for mAP calculation ---
+        # Paruošiama mAP skaičiavimui
         pred_per_image = {cls: [] for cls in rcnn_data.idx2label.values()}
         gt_per_image   = {cls: [] for cls in rcnn_data.idx2label.values()}
 
@@ -319,11 +328,11 @@ def evaluate_map(args):
         keep   = scores > 0.05
         boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
 
-        # collect predictions
+        # Surenka predictions pagal klases
         for b, l, s in zip(boxes, labels, scores):
             name = rcnn_data.idx2label[l]
             pred_per_image[name].append([*b.tolist(), s])
-        # collect ground truth
+        # Surenka ground-truth
         for b, l in zip(gt_boxes, gt_labels):
             name = rcnn_data.idx2label[l]
             gt_per_image[name].append(b.tolist())
@@ -331,14 +340,14 @@ def evaluate_map(args):
         all_preds.append(pred_per_image)
         all_gts.append(gt_per_image)
 
-        # --- update confusion matrix & IoU stats ---
+        # Atnaujina confusion matrix ir IoU
         used_gt = np.zeros(len(gt_boxes), dtype=bool)
         order   = np.argsort(-scores)
 
         for pi in order:
             pb = boxes[pi]
             pl = labels[pi]
-            # compute IoUs against all GT
+            # Jei IoU ≥ 0.3 ir GT dar nenaudotas → TP
             ious = np.array([get_iou(pb, gb) for gb in gt_boxes])
             best = ious.argmax()
             best_iou = ious[best]
@@ -352,13 +361,13 @@ def evaluate_map(args):
                 # false positive vs background
                 conf_mat[0, pl] += 1
 
-        # any unmatched GT → false negatives
+        # Neatitikę GT → FN
         for gi, matched in enumerate(used_gt):
             if not matched:
                 gl = gt_labels[gi]
                 conf_mat[gl, 0] += 1
 
-    # 4) compute & print mAP
+    # compute & print mAP
     mean_ap, class_aps = compute_map(all_preds, all_gts, iou_threshold=0.0, method='area')
     print("\n=== mAP ===")
     for cls, ap in class_aps.items():
@@ -366,7 +375,7 @@ def evaluate_map(args):
     print(f"  mAP = {mean_ap:.4f}\n")
 
     labels = [rcnn_data.idx2label[i] for i in range(num_classes)]
-    # 6) precision / recall / F1 / avg IoU per class
+    # Apskaičiuojama precision, recall, F1 ir vid. IoU kiekvienai klasei
     print("=== Precision  Recall  F1-score  Avg IoU ===")
     for i, cls in enumerate(labels):
         tp = conf_mat[i, i]
@@ -382,17 +391,17 @@ def evaluate_map(args):
     disp = ConfusionMatrixDisplay(confusion_matrix=conf_mat, display_labels=labels)
     fig, ax = plt.subplots(figsize=(8, 8))
     disp.plot(cmap="Blues", ax=ax, xticks_rotation=45)
-    ax.set_title("Detection Confusion Matrix\n(rows = GT, cols = Pred)")
+    ax.set_title("Aptikimo Confusion Matrix\n(rows = GT, cols = Pred)")
     plt.tight_layout()
     cm_path = os.path.join(output_dir, "confusion_matrix.png")
     fig.savefig(cm_path)
-    print(f"→ Saved confusion matrix plot to {cm_path}")
+    print(f" Išsaugotas confusion matrix į {cm_path}")
     plt.show()
 
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Arguments for inference using torchvision code faster rcnn')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--config', dest='config_path',
                         default='config/rcnn.yaml', type=str)
     parser.add_argument('--evaluate', dest='evaluate',
@@ -406,9 +415,9 @@ if __name__ == '__main__':
     if args.infer_samples:
         infer(args)
     else:
-        print('Not Inferring for samples as `infer_samples` argument is False')
+        print('Neišvedami pavyzdžiai, nes argumentas `infer_samples` yra False')
 
     if args.evaluate:
         evaluate_map(args)
     else:
-        print('Not Evaluating as `evaluate` argument is False')
+        print('Nevertinama, nes argumentas `evaluate` yra False')

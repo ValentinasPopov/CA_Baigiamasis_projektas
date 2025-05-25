@@ -1,27 +1,24 @@
 import os
-import traceback
 import tempfile
+import traceback
 from pathlib import Path
 
 import cv2
 import numpy as np
 import torch
-from ultralytics import YOLO
 import yaml
+from ultralytics import YOLO
+
 
 SCRIPT_DIR   = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
-
-# How many iterations GrabCut should run
 ITER_GRABCUT = 5
 
-# Load config
 data_yaml_path    = PROJECT_ROOT / 'config' / 'yolo.yaml'
 cfg               = yaml.safe_load(open(data_yaml_path))
 dataset_config    = cfg['dataset_params']
 train_config      = cfg['train_params']
 
-# Auto-select device once
 if torch.cuda.is_available():
     DEVICE = torch.device('cuda')
 elif torch.mps.is_available():
@@ -31,13 +28,11 @@ else:
 
 
 def train_custom_yolo():
-    """ Trains a custom YOLOv8 model. """
     print(f"Using device: {DEVICE}")
     if not data_yaml_path.exists():
         print(f"ERROR: Data YAML file not found at '{data_yaml_path}'.")
         return
 
-    # 1) Dump just the dataset keys into a temporary YAML
     data_subset = {
         'path':  str(PROJECT_ROOT / dataset_config['path']),
         'train': dataset_config['train'],
@@ -110,14 +105,15 @@ def inference(trained_model_path_str, image_to_detect_path_str, confidence_thres
 
     # Gather image files
     if image_to_detect_path.is_dir():
-        sources = sorted(
-            str(p) for p in image_to_detect_path.iterdir()
-            if p.suffix.lower() in ('.jpg', '.png', '.jpeg')
-        )
+        sources = []
+        for p in image_to_detect_path.iterdir():
+            if p.suffix.lower() in ('.jpg', '.png', '.jpeg'):
+                sources.append(str(p))
+        sources = sorted(sources)
+
     else:
         sources = [str(image_to_detect_path)]
 
-    # Single flat output directory
     base_out = PROJECT_ROOT / dataset_config['project_name'] / dataset_config['inference_output']
     base_out.mkdir(parents=True, exist_ok=True)
 
@@ -126,10 +122,9 @@ def inference(trained_model_path_str, image_to_detect_path_str, confidence_thres
         img = cv2.imread(src)
         h, w = img.shape[:2]
 
-        # 1) Detection
         results = model.predict(source=img, conf=confidence_threshold, device=DEVICE)
 
-        # 2) Build full‐image mask
+        # Mask konstravimas per GrabcUT
         full_mask = np.zeros((h, w), dtype=np.uint8)
         for r in results:
             for box, cls_idx, conf in zip(r.boxes.xyxy, r.boxes.cls, r.boxes.conf):
@@ -158,7 +153,7 @@ def inference(trained_model_path_str, image_to_detect_path_str, confidence_thres
                     full_mask[y1:y2, x1:x2], mask_fg
                 )
 
-        # 3) Draw boxes + labels
+        # Piešiama prediction bbox ir label tekstus
         vis = img.copy()
         for r in results:
             for box, cls_idx, conf in zip(r.boxes.xyxy, r.boxes.cls, r.boxes.conf):
@@ -169,7 +164,7 @@ def inference(trained_model_path_str, image_to_detect_path_str, confidence_thres
                             (x1, y1 - 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
 
-        # 4) Overlay mask
+        # Uždedama maską ant prediction
         color_mask = cv2.merge([
             full_mask,
             np.zeros_like(full_mask),
@@ -177,7 +172,6 @@ def inference(trained_model_path_str, image_to_detect_path_str, confidence_thres
         ])
         overlay = cv2.addWeighted(vis, 1.0, color_mask, 0.5, 0)
 
-        # 5) Save every variant into base_out
         stem, ext = Path(src).stem, Path(src).suffix
         cv2.imwrite(str(base_out / f"{stem}_pred{ext}"),      vis)
         cv2.imwrite(str(base_out / f"{stem}_overlay{ext}"),  overlay)
@@ -199,16 +193,13 @@ def inference(trained_model_path_str, image_to_detect_path_str,
         print(f"Error: Source not found at {image_to_detect_path}")
         return
 
-    # Load YOLO model
     model = YOLO(str(trained_model_path))
     model.model.to(DEVICE)
     print(f"Loaded YOLO model from {trained_model_path} on {DEVICE}")
 
-    # Prepare outputs
     base_out = PROJECT_ROOT / dataset_config['project_name'] / dataset_config['inference_output']
     base_out.mkdir(parents=True, exist_ok=True)
 
-    # Iterate sources
     if image_to_detect_path.is_dir():
         sources = sorted(
             str(p) for p in image_to_detect_path.iterdir()
@@ -222,10 +213,8 @@ def inference(trained_model_path_str, image_to_detect_path_str,
         img = cv2.imread(src)
         h, w = img.shape[:2]
 
-        # --- 1) Inference/predictions ---
         results = model.predict(source=img, conf=confidence_threshold, device=DEVICE)
 
-        # --- 2) Build full-image mask ---
         full_mask = np.zeros((h, w), dtype=np.uint8)
         for r in results:
             for box in zip(r.boxes.xyxy, r.boxes.cls, r.boxes.conf):
@@ -256,7 +245,6 @@ def inference(trained_model_path_str, image_to_detect_path_str,
                     full_mask[y1:y2, x1:x2], mask_fg
                 )
 
-        # --- 3) Draw prediction boxes + labels ---
         vis_pred = img.copy()
         for r in results:
             for box_tensor, cls_idx, conf in zip(
@@ -268,7 +256,6 @@ def inference(trained_model_path_str, image_to_detect_path_str,
                             (x1, y1 - 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
-        # --- 4) Overlay mask on predictions ---
         color_mask = cv2.merge([
             full_mask,
             np.zeros_like(full_mask),
@@ -276,9 +263,7 @@ def inference(trained_model_path_str, image_to_detect_path_str,
         ])
         overlay = cv2.addWeighted(vis_pred, 1.0, color_mask, 0.5, 0)
 
-        # --- 5) Draw ground-truth boxes if available ---
         vis_gt = img.copy()
-        # always use dataset_config['val_labels'] for ground-truth
         label_file = Path(dataset_config['path']) / Path(dataset_config['val_labels']) / Path(src).with_suffix('.txt').name
         print(f"Ground-truth label file: {label_file}")
         if label_file.exists():
@@ -302,7 +287,7 @@ def inference(trained_model_path_str, image_to_detect_path_str,
                                 (x1, y1 - 5),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
         else:
-            print(f"Ground-truth label file not found: {label_file}")
+            print(f"Ground-truth label failas nerastas: {label_file}")
 
         # --- 6) Save outputs ---
         stem, ext = Path(src).stem, Path(src).suffix
@@ -310,7 +295,7 @@ def inference(trained_model_path_str, image_to_detect_path_str,
         cv2.imwrite(str(base_out / f"{stem}_overlay{ext}"), overlay)
         cv2.imwrite(str(base_out / f"{stem}_gt{ext}"), vis_gt)
 
-        print(f"Saved to {base_out}:")
+        print(f"Išsaugomas į {base_out}:")
         print(f"  • {stem}_pred{ext}")
         print(f"  • {stem}_overlay{ext}")
         print(f"  • {stem}_gt{ext}")

@@ -1,29 +1,30 @@
 import glob
 import os
 import random
+import json
+import xml.etree.ElementTree as ET
 
-import torch
-import torchvision
+import numpy as np
 from PIL import Image, ImageFilter
 from tqdm import tqdm
-from torch.utils.data.dataset import Dataset
-import xml.etree.ElementTree as ET
-import json
-
+import torch
+import torchvision
 import torchvision.transforms.functional as TF
-import numpy as np
+
+from torch.utils.data.dataset import Dataset
 
 from helper.load_detection_labels import DetectLabels
-
 
 def load_images_and_anns(im_dir, annotation_json_file, label2idx):
     im_infos = []
 
-    print(f"Loading annotation file: {annotation_json_file}")
+    print(f"Įkeliamas anotacijos failas: {annotation_json_file}")
     with open(annotation_json_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
     for img_name, content in data.items():
+
+        # Sukurti informaciją dictionary kiekvienai paveikslui
         im_info = {
             'img_id': img_name.split('.')[0],
             'filename': os.path.join(im_dir, img_name),
@@ -32,6 +33,7 @@ def load_images_and_anns(im_dir, annotation_json_file, label2idx):
             'detections': []
         }
 
+        # Ištraukti raw aptikimų sąrašą (arba tuščias, jei jo nėra)
         detections = content.get('detections', [])
         for detection in detections:
             x1, y1, x2, y2 = detection['bbox']
@@ -44,10 +46,10 @@ def load_images_and_anns(im_dir, annotation_json_file, label2idx):
                     'bbox': [x1, y1, x2, y2]
                 })
 
-        # Even if no detections, still include this image
+        # Jei nėra aptikimo atveų, vis tiek įtraukiamas vaizdas
         im_infos.append(im_info)
 
-    print(f"Total images{len(im_infos)}")
+    print(f"Viso paveikslų: {len(im_infos)}")
     return im_infos
 class RCNNDataset(Dataset):
     def __init__(self, split, im_dir, annotation_json_path):
@@ -55,26 +57,42 @@ class RCNNDataset(Dataset):
         self.split = split
         self.im_dir = im_dir
         self.annotation_json_path = annotation_json_path
+
+        # Užkraunamas klasių pavadinimus iš YAML
         labels_obj = DetectLabels("config/detect_labels.yaml")
         classes = sorted(labels_obj)
         classes = ['background'] + list(labels_obj)
-        self.label2idx = {classes[idx]: idx for idx in range(len(classes))}
-        self.idx2label = {idx: classes[idx] for idx in range(len(classes))}
+
+        #label2idx mapping
+        self.label2idx = {}
+        for idx in range(len(classes)):
+            class_name = classes[idx]
+            self.label2idx[class_name] = idx
+
+        #idx2label mapping
+        self.idx2label = {}
+        for idx in range(len(classes)):
+            class_name = classes[idx]
+            self.idx2label[idx] = class_name
+
         print(self.idx2label)
-        self.images_info = load_images_and_anns(im_dir, annotation_json_path, self.label2idx)
+        self.images_info = load_images_and_anns(im_dir,
+                                                annotation_json_path,
+                                                self.label2idx)
         print(classes)
     def __len__(self):
+        # Grąžina Dataset paveikslų skaičių
         return len(self.images_info)
 
     def __getitem__(self, index):
         info = self.images_info[index]
         img = Image.open(info['filename']).convert("RGB")
 
-        # Pull out the raw lists
+        # Ištraukiama bounding box ir koordinačių labels sąrašus
         bboxes_list = [d['bbox'] for d in info['detections']]
         labels_list = [d['label'] for d in info['detections']]
 
-        # Make sure boxes is always a [N,4] tensor, even if N==0
+        # Jei detekcijų nėra, paruošiam tuščius tensor’us formatu [0,4] ir [0]
         if len(bboxes_list) == 0:
             boxes = torch.zeros((0, 4), dtype=torch.float32)
             labels = torch.zeros((0,), dtype=torch.int64)
@@ -86,8 +104,9 @@ class RCNNDataset(Dataset):
         if self.split == 'train':
             w, h = img.size
 
-            # 1) Random horizontal flip
+            # Augmentacijos
 
+            # Atsitiktinis horizontalus apvertimas
             if random.random() < 0.5 and boxes.size(0) > 0:
                 img = TF.hflip(img)
                 x1 = w - boxes[:, 2]
@@ -95,9 +114,7 @@ class RCNNDataset(Dataset):
                 boxes[:, 0] = x1
                 boxes[:, 2] = x2
 
-
-            # 2) Random 90° rotation
-
+            # Atsitiktinis 90° pasukimas
             if random.random() < 0.5 and boxes.size(0) > 0:
                 img = img.rotate(90, expand=True)
                 new_w, new_h = h, w
@@ -109,30 +126,14 @@ class RCNNDataset(Dataset):
                 boxes = torch.stack([nx1, ny1, nx2, ny2], dim=1)
                 w, h = new_w, new_h
 
-            # 3) Brightness & contrast jitter
+            # Ryškumo ir kontrasto jitter
             if random.random() < 0.5:
                 b = random.uniform(0.8, 1.2)
                 c = random.uniform(0.8, 1.2)
                 img = TF.adjust_brightness(img, b)
                 img = TF.adjust_contrast(img, c)
 
-            # 4) Gaussian blur
-
-            if random.random() < 0.2:
-                radius = random.uniform(0.0, 1.5)
-                img = img.filter(ImageFilter.GaussianBlur(radius=radius))
-
-
-            # 5) Additive Gaussian noise
-
-            if random.random() < 0.2:
-                arr = np.array(img).astype(np.float32)
-                noise = np.random.normal(0, 10, arr.shape).astype(np.float32)
-                arr = np.clip(arr + noise, 0, 255).astype(np.uint8)
-                img = Image.fromarray(arr)
-
-
-        # Final conversion to tensor
+        # Galutinis konvertavimas į tensor
         img_tensor = TF.to_tensor(img)
 
         target = {
