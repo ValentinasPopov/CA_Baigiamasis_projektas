@@ -1,6 +1,3 @@
-
-
-1# main.py
 from sympy import false
 
 from scripts import labeling
@@ -18,6 +15,9 @@ from scripts.image_dataset_splitter import DatasetSplitter
 from scripts.inference_rcnn import infer
 from scripts.train_rcnn import train
 from models.Yolo import run_inference_yolo, train_custom_yolo
+
+import argparse
+
 
 def main():
     path = "dataset"
@@ -41,11 +41,29 @@ def main():
         elif user_value == "2":
             train_custom_yolo()
         elif user_value == "3":
-            train_rcnn()
+            parser = argparse.ArgumentParser(description="Pasirink veiksmą")
+            parser.add_argument('--config', dest='config_path',
+                                default='config/rcnn.yaml', type=str,
+                                help="Konfigūracijos YAML kelias")
+            parser.add_argument('--use_resnet50_fpn', dest='use_resnet50_fpn',
+                                default=True, type=bool,
+                                help="Naudoti ResNet50-FPN backbone")
+            args = parser.parse_args()
+            train(args)
         elif user_value == "4":
             run_inference_yolo()
         elif user_value == "5":
-            infer_rcnn()
+            parser = argparse.ArgumentParser()
+            parser.add_argument('--config', dest='config_path',
+                                default='config/rcnn.yaml', type=str)
+            parser.add_argument('--evaluate', dest='evaluate',
+                                default=True, type=bool)
+            parser.add_argument('--infer_samples', dest='infer_samples',
+                                default=True, type=bool)
+            parser.add_argument('--use_resnet50_fpn', dest='use_resnet50_fpn',
+                                default=True, type=bool)
+            args = parser.parse_args()
+            infer(args)
         else:
             break
 
