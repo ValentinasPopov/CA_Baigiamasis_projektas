@@ -1,3 +1,5 @@
+
+
 1# main.py
 from sympy import false
 
@@ -13,12 +15,21 @@ import torch.optim as optim
 
 from scripts.image_dataset_splitter import DatasetSplitter
 
+from scripts.inference_rcnn import infer
+from scripts.train_rcnn import train
+from models.Yolo import run_inference_yolo, train_custom_yolo
+
 def main():
     path = "dataset"
 
     while True:
         # Step 1: Label images
-        print("Label photos: 1 \nTraining: 2 \nShowing: 3 \nQuit: 4 \n", )
+        print(
+              "Label photos ⎯ 1\n"
+              "Training YOLO ⎯ 2\n"
+              "Training RCNN ⎯ 3\n"
+              "Run inference YOLO ⎯ 4\n"
+              "Run inference RCNN ⎯ 5\n")
         user_value = input("Enter a value: ")
 
         if user_value == "1":
@@ -28,11 +39,13 @@ def main():
             if not label:
                 user_value = "0"
         elif user_value == "2":
-            splitter = DatasetSplitter(path)
-            splitter.split_to_train_test_images()
+            train_custom_yolo()
         elif user_value == "3":
-
-            print(os.path.exists("dataset/train/images/annotations.json"))
+            train_rcnn()
+        elif user_value == "4":
+            run_inference_yolo()
+        elif user_value == "5":
+            infer_rcnn()
         else:
             break
 

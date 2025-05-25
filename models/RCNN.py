@@ -3,7 +3,24 @@ import torch.nn as nn
 import torchvision
 import math
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+import yaml
+
+CONFIG_PATH = "config/rcnn.yaml"
+
+# Auto-select device
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+else:
+    device = torch.device('cpu')
+
+
+with open(CONFIG_PATH, 'r') as file:
+    try:
+        config = yaml.safe_load(file)
+    except yaml.YAMLError as exc:
+        print(exc)
+
+model_config = config['model_params']
 
 def get_iou(boxes1, boxes2):
     r"""
@@ -123,7 +140,7 @@ class RegionProposalNetwork(nn.Module):
     r"""
     Region Proposal Network (RPN) that generates anchors and predicts objectness and bbox offsets.
     """
-    def __init__(self, in_channels, scales, aspect_ratios, model_config):
+    def __init__(self, in_channels, scales, aspect_ratios):
         super(RegionProposalNetwork, self).__init__()
         self.scales = scales
         self.low_iou_threshold = model_config['rpn_bg_threshold']
@@ -263,9 +280,9 @@ class ROIHead(nn.Module):
     r"""
     ROI head that performs ROI pooling and predicts the final class scores and bbox offsets.
     """
-    def __init__(self, model_config, num_classes, in_channels):
+    def __init__(self, in_channels):
         super(ROIHead, self).__init__()
-        self.num_classes = num_classes
+        self.num_classes = model_config['num_classes']
         self.roi_batch_size = model_config['roi_batch_size']
         self.roi_pos_count = int(model_config['roi_pos_fraction'] * self.roi_batch_size)
         self.iou_threshold = model_config['roi_iou_threshold']
@@ -411,7 +428,7 @@ class ROIHead(nn.Module):
         return pred_boxes, pred_labels, pred_scores
 
 class FasterRCNN(nn.Module):
-    def __init__(self, model_config, num_classes):
+    def __init__(self):
         super(FasterRCNN, self).__init__()
         self.model_config = model_config
         vgg16 = torchvision.models.vgg16(pretrained=True)
@@ -420,7 +437,7 @@ class FasterRCNN(nn.Module):
                                          scales=model_config['scales'],
                                          aspect_ratios=model_config['aspect_ratios'],
                                          model_config=model_config)
-        self.roi_head = ROIHead(model_config, num_classes, in_channels=model_config['backbone_out_channels'])
+        self.roi_head = ROIHead(in_channels=model_config['backbone_out_channels'])
         for layer in self.backbone[:10]:
             for p in layer.parameters():
                 p.requires_grad = False
@@ -499,33 +516,8 @@ class FasterRCNN(nn.Module):
         return rpn_output, frcnn_output
 
 if __name__ == "__main__":
-    model_config = {
-        'rpn_bg_threshold': 0.3,
-        'rpn_fg_threshold': 0.7,
-        'rpn_nms_threshold': 0.7,
-        'rpn_batch_size': 256,
-        'rpn_pos_fraction': 0.5,
-        'rpn_train_topk': 6000,
-        'rpn_test_topk': 300,
-        'rpn_train_prenms_topk': 12000,
-        'rpn_test_prenms_topk': 6000,
-        'backbone_out_channels': 512,
-        'scales': [128],
-        'aspect_ratios': [1.0],
-        'roi_batch_size': 128,
-        'roi_pos_fraction': 0.25,
-        'roi_iou_threshold': 0.5,
-        'roi_low_bg_iou': 0.1,
-        'roi_nms_threshold': 0.3,
-        'roi_topk_detections': 100,
-        'roi_score_threshold': 0.05,
-        'roi_pool_size': 7,
-        'fc_inner_dim': 4096,
-        'min_im_size': 10,
-        'max_im_size': 3000,
-    }
-    num_classes = 3
-    faster_rcnn_model = FasterRCNN(model_config, num_classes)
+
+    faster_rcnn_model = FasterRCNN()
     faster_rcnn_model.train()
     faster_rcnn_model.to(device)
     # Dummy image: 3 x 800 x 600

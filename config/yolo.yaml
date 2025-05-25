@@ -1,19 +1,58 @@
+dataset_params:
+  # Point 'path' at your dataset root from inside config/
+  path: dataset
 
-path: ../Galutinis_projektas_VP/dataset
+  # Relative to 'path'
+  train: train/images
+  val: test/images
+  val_labels: test/labels
 
-train: train/images  # Relative to 'path' - e.g., /Users/valentinaspopov/Desktop/PythonProjects/Galutinis_projektas_VP/dataset/train/images
-val: test/images     # Relative to 'path' - e.g., /Users/valentinaspopov/Desktop/PythonProjects/Galutinis_projektas_VP/dataset/test/images
+  project_name: Yolo_Output
+  experiment_name: run_yolov8_custom
+  inference_output: inference_output
 
-# Number of classes
-nc: 8
+  # Number of classes in your annotations
+  nc: 8
 
-# Class names
-names:
-  - Quartzity
-  - Live_Knot
-  - Marrow
-  - Resin
-  - Dead_Knot
-  - knot_with_crack
-  - Knot_missing
-  - CracK
+  # Class names, in order of their label indices
+  names:
+    - Quartzity
+    - Live_Knot
+    - Marrow
+    - Resin
+    - Dead_Knot
+    - knot_with_crack
+    - Knot_missing
+    - Crack
+
+train_params:
+  model_variant: yolov8s.pt
+  epochs: 5
+  img_size: 320
+  batch_size: 8
+  exist_ok: true
+  val: true  # įgalina validaciją
+
+  augment: true
+  auto_augment: true
+
+  # Geometry
+  fliplr:     0.0
+  flipud:     0.0
+  degrees:    0.0
+  translate:  0.0
+  scale:      0.0
+  shear:      0.0
+  perspective: 0.0
+
+  # Photometric
+  hsv_h:      0.01
+  hsv_s:      0.3
+  hsv_v:      0.2
+
+  # Cut‐and‐mix
+  mosaic:     0.0
+  mixup:      0.0
+  copy_paste: 0.0
+  erasing:    0.0
+  close_mosaic: 0

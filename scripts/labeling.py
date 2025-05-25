@@ -5,7 +5,9 @@ import json
 
 from sympy import false
 
+from helper.load_detection_labels import DetectLabels
 from scripts import  image_dataset_splitter
+
 
 
 class Label:
@@ -19,7 +21,7 @@ class Label:
         self.selected_anomaly = False
         self.selecting = False
 
-        self.defect_labels = ["Live_Knot", "Marrow", "Resin", "Dead_Knot", "Knot_with_Crack", "Knot_missing", "Crack"]
+        self.defect_labels = DetectLabels("config/detect_labels.yaml")
         self.label2idx = {label: i for i, label in enumerate(self.defect_labels)}
         self.defect_label_keys = {ord(str(i)): label for i, label in enumerate(self.defect_labels, start=1)}
 
@@ -153,8 +155,11 @@ class Label:
         output_path = Path(self.path)
         output_path.mkdir(parents=True, exist_ok=True)
 
+
+
         return self.annotate_images(
             input_img_paths=input_img_paths,
             output_path=output_path,
-            labels=["good", "anomaly"],
+            labels=["good", "anomaly"]
         )
+

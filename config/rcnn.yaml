@@ -1,43 +1,67 @@
 dataset_params:
-  im_train_path: '../dataset/train/images'
-  ann_train_path: '../dataset/train/annotations.json'
-  im_test_path: '../dataset/test/images'
-  ann_test_path: '../dataset/test/annotations.json'
+  im_train_path: 'dataset/train/images'
+  ann_train_path: 'dataset/train/annotations.json'
+  im_test_path: 'dataset/test/images'
+  ann_test_path: 'dataset/test/annotations.json'
+  im_val_path: 'dataset/test/images'
+  ann_val_path: 'dataset/test/annotations.json'
+  output: 'RCNN_Output'
+
   annotation_format: json
-  num_classes: 3
+  num_classes: 8
 
 
 model_params:
-  im_channels : 3
-  aspect_ratios: [0.5, 1, 2]
-  scales: [128, 256, 512]
-  min_im_size : 600
-  max_im_size : 1000
-  backbone_out_channels : 512
-  fc_inner_dim : 1024
-  rpn_bg_threshold : 0.3
-  rpn_fg_threshold : 0.7
-  rpn_nms_threshold : 0.7
-  rpn_train_prenms_topk : 12000
-  rpn_test_prenms_topk : 6000
-  rpn_train_topk : 2000
-  rpn_test_topk : 300
-  rpn_batch_size : 256
-  rpn_pos_fraction : 0.5
-  roi_iou_threshold : 0.5
-  roi_low_bg_iou : 0.0 # increase it to 0.1 for hard negative
-  roi_pool_size : 7
-  roi_nms_threshold : 0.3
-  roi_topk_detections : 100
-  roi_score_threshold : 0.05
-  roi_batch_size : 128
-  roi_pos_fraction : 0.25
+  im_channels:            3
+  min_im_size:            800
+  max_im_size:            1333
+
+  backbone_out_channels:  256
+  fc_inner_dim:           1024
+
+  aspect_ratios:          [0.5, 1.0, 2.0]
+  scales:                 [32, 64, 128, 256]
+
+  rpn_bg_threshold:       0.3
+  rpn_fg_threshold:       0.7
+  rpn_nms_threshold:      0.7
+  rpn_train_prenms_topk:  10000
+  rpn_test_prenms_topk:   5000
+  rpn_train_topk:         2000
+  rpn_test_topk:          300
+  rpn_batch_size:         256
+  rpn_pos_fraction:       0.5
+
+  roi_iou_threshold:      0.5
+  roi_low_bg_iou:         0.1
+  roi_pool_size:          7
+  roi_nms_threshold:      0.3
+  roi_score_threshold:    0.05
+  roi_topk_detections:    100
+
+  roi_batch_size:         512
+  roi_pos_fraction:       0.25
+
+  rpn_pre_nms_top_n_train: 12000
+  rpn_pre_nms_top_n_test: 6000
+  box_batch_size_per_image: 128
+  rpn_post_nms_top_n_test: 300
+
 
 train_params:
-  task_name: '../wood_defect_detection'
+  task_name: 'run_RCNN_custom'
   seed : 1111
-  acc_steps : 1 # increase you want to get gradients from >1 steps(kind of mimicking >1 batch size)
+  acc_steps : 1
   num_epochs: 5
   lr_steps : [12, 16]
-  lr: 0.001
-  ckpt_name: 'wood_defect_model.pth'
+  lr: 0.005
+  batch_size: 4
+  shuffle: True
+  num_workers: 4
+  num_classes: 8
+  ckpt_name: 'defect_model.pth'
+  num_train_images: 200
+  num_val_images: 50
+
+inference_params:
+  box_score_thresh: 0.2

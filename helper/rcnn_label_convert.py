@@ -4,7 +4,6 @@ from cProfile import label
 from pathlib import Path
 from PIL import Image
 
-from scripts.yolo_label_convert import filename, detections
 
 
 def convert_yolo_to_json(img_dir, label_dir, output_json_path):
@@ -53,5 +52,5 @@ if __name__ == '__main__':
     convert_yolo_to_json(
         img_dir="../dataset/test/images",
         label_dir="../dataset/test/labels",
-        output_json_path="../dataset/annotations.json"
+        output_json_path="../dataset/test/annotations.json"
     )
