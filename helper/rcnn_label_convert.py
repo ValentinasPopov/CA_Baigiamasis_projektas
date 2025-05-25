@@ -50,7 +50,7 @@ def convert_yolo_to_json(img_dir, label_dir, output_json_path):
 
 if __name__ == '__main__':
     convert_yolo_to_json(
-        img_dir="../dataset/test/images",
-        label_dir="../dataset/test/labels",
-        output_json_path="../dataset/test/annotations.json"
+        img_dir="../dataset/train/images",
+        label_dir="../dataset/train/labels",
+        output_json_path="../dataset/train/annotations.json"
     )

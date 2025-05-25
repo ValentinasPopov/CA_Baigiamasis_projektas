@@ -130,7 +130,7 @@ def compute_map(det_boxes, gt_boxes, iou_threshold=0.4, method='area'):
             ap /= 11.0
 
         else:
-            raise ValueError("method gali būti tik 'area' arba 'interp'")
+            raise ValueError("metodas gali būti tik 'area' arba 'interp'")
 
         # Jeigu yra bent vienas GT → saugoma AP, kitu atveju NaN
         if num_gts > 0:
@@ -151,12 +151,13 @@ def load_model_and_dataset(args):
             config = yaml.safe_load(file)
         except yaml.YAMLError as exc:
             print(exc)
-    print(config)
 
     dataset_config = config['dataset_params']
     model_config = config['model_params']
     train_config = config['train_params']
     infer_config = config['inference_params']
+
+    print(dataset_config['im_test_path'])
 
     seed = train_config['seed']
     torch.manual_seed(seed)
@@ -171,10 +172,7 @@ def load_model_and_dataset(args):
         annotation_json_path=dataset_config['ann_test_path']
     )
 
-
-
     test_dataset = DataLoader(rcnn_data, batch_size=1, shuffle=False)
-
     if args.use_resnet50_fpn:
         faster_rcnn_model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True,
                                                                                  min_size=model_config['min_im_size'],
@@ -209,11 +207,11 @@ def load_model_and_dataset(args):
     faster_rcnn_model.to(device)
     if args.use_resnet50_fpn:
         faster_rcnn_model.load_state_dict(torch.load(os.path.join(train_config['task_name'],
-                                                                  'weight_frcnn_resnet_' + train_config['ckpt_name']),
+                                                                  'best_resnet' + train_config['ckpt_name']),
                                                      map_location=device))
     else:
         faster_rcnn_model.load_state_dict(torch.load(os.path.join(train_config['task_name'],
-                                                                  'weight_frcnn_' + train_config['ckpt_name']),
+                                                                  'best' + train_config['ckpt_name']),
                                                      map_location=device))
     return faster_rcnn_model, rcnn_data, test_dataset
 
@@ -222,7 +220,7 @@ def infer(args):
 
     # Pasirenkame katalogo pavadinimą pagal modelio tipą
     suffix = "resnet_" if args.use_resnet50_fpn else ""
-    output_dir = f"tv_frcnn_{suffix}"
+    output_dir = f"RCNN_Output/frcnn_inference_{suffix}"
     os.makedirs(output_dir, exist_ok=True)
 
     # Užkrauname modelį ir duomenų rinkinį
@@ -289,7 +287,7 @@ def evaluate_map(args):
     """
     Įvertina modelio rezultatus: skaičiuoja confusion_matrix, IoU ir mAP.
     """
-    output_dir = 'tv_frcnn_resnet_' if args.use_resnet50_fpn else 'tv_frcnn_'
+    output_dir = 'RCNN_Output/rcnn_resnet_' if args.use_resnet50_fpn else 'RCNN_Output/tv_frcnn_inference'
     os.makedirs(output_dir, exist_ok=True)
 
     # Užkrauna modelį ir test duomenų rinkinį
@@ -374,7 +372,9 @@ def evaluate_map(args):
         print(f"  AP[{cls:12s}] = {ap:.4f}")
     print(f"  mAP = {mean_ap:.4f}\n")
 
-    labels = [rcnn_data.idx2label[i] for i in range(num_classes)]
+    labels = []
+    for i in range(num_classes):
+        labels.append(rcnn_data.idx2label[i])
     # Apskaičiuojama precision, recall, F1 ir vid. IoU kiekvienai klasei
     print("=== Precision  Recall  F1-score  Avg IoU ===")
     for i, cls in enumerate(labels):
@@ -400,24 +400,6 @@ def evaluate_map(args):
 
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', dest='config_path',
-                        default='config/rcnn.yaml', type=str)
-    parser.add_argument('--evaluate', dest='evaluate',
-                        default=True, type=bool)
-    parser.add_argument('--infer_samples', dest='infer_samples',
-                        default=True, type=bool)
-    parser.add_argument('--use_resnet50_fpn', dest='use_resnet50_fpn',
-                        default=True, type=bool)
-    args = parser.parse_args()
 
-    if args.infer_samples:
-        infer(args)
-    else:
-        print('Neišvedami pavyzdžiai, nes argumentas `infer_samples` yra False')
 
-    if args.evaluate:
-        evaluate_map(args)
-    else:
-        print('Nevertinama, nes argumentas `evaluate` yra False')
+

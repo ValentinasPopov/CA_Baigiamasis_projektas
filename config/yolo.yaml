@@ -8,7 +8,7 @@ dataset_params:
   val_labels: test/labels
 
   project_name: Yolo_Output
-  experiment_name: run_yolov8_custom
+  experiment_name: run_yolov8
   inference_output: inference_output
 
   # Number of classes in your annotations

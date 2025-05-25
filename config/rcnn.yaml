@@ -55,7 +55,7 @@ model_params:
 
 
 train_params:
-  task_name: 'run_RCNN_custom'
+  task_name: 'RCNN_Output/run_RCNN'
   seed : 1111
   acc_steps : 1
   num_epochs: 5
@@ -65,9 +65,9 @@ train_params:
   shuffle: True
   num_workers: 4
   num_classes: 8
-  ckpt_name: 'defect_model.pth'
+  ckpt_name: '.pth'
   num_train_images: 200
   num_val_images: 50
 
 inference_params:
-  box_score_thresh: 0.4
+  box_score_thresh: 0.2
